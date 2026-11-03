@@ -3,6 +3,16 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v2.1 (2026-11-03)
+- `retune.py` (mới): chạy lại spotting và DVC từ checkpoint đã train, không train lại. Thử nhiều `NMS_threshold` × `top_k` trên một split, in METEOR, CIDEr, a_mAP, số lần báo sự kiện và số câu khác nhau, lưu `retune_<split>.csv`, và để lại `outputs/<split>` của tổ hợp tốt nhất.
+- Timeline, luồng NO:
+  - Bàn thắng, thẻ phạt và thay người được nói **ngay khi biết** (`live`), không chờ khung 60 giây. Đo trên trận Man Utd - Arsenal: trễ còn +2 đến +30 giây (trước đây +24 đến +172 giây).
+  - Gộp các lần thay người trong cùng một phút thành một câu.
+  - Chuyện ngoài lề nhỏ (quốc tịch, dự bị, số bàn mùa giải) chỉ nói khi khoảng im lặng ≥ `--long_gap` (120 giây), và không nói trong `--goal_cooldown` (120 giây) sau bàn thắng.
+  - Cầu thủ đã bị thay ra thì không được giới thiệu nữa.
+  - `--spacing` mặc định tăng từ 60 lên 90 giây. Thêm `--min_info_gap`, `--long_gap`, `--low_priority`, `--goal_cooldown`.
+- Notebook: bước 10 chạy retune (10a trên valid, 10b áp dụng lên test), bước 11 tạo timeline.
+
 ## v2.0 (2026-11-03)
 Bình luận theo 2 luồng: YES khi có sự kiện, NO khi không có sự kiện.
 - `commentary_timeline.py` (mới): ghép lời bình sự kiện của model (`results_dense_captioning.json`, luồng YES) với bình luận ngoài lề ở các khoảng im lặng từ 45 giây trở lên (luồng NO), rồi ghi ra `commentary_timeline.json/.txt` cho từng trận. Dùng `--events_from_labels` để thử với lời bình thật, không cần model.

@@ -65,7 +65,8 @@ def outfield_shape(tactic):
 
 
 class Fact:
-    def __init__(self, topic, text, priority, valid_from=KICKOFF, valid_until=None, repeat_every=None, repeat_text=None):
+    def __init__(self, topic, text, priority, valid_from=KICKOFF, valid_until=None, repeat_every=None, repeat_text=None,
+                 live=False):
         self.topic = topic
         self.text = text
         self.priority = priority
@@ -74,6 +75,8 @@ class Fact:
         # seconds after which the fact may be said again (e.g. the score), with repeat_text from then on
         self.repeat_every = repeat_every
         self.repeat_text = repeat_text or text
+        # something that just happened on the pitch (goal, card, substitution): said as soon as it is known
+        self.live = live
 
     def valid_at(self, t):
         return self.valid_from <= t and (self.valid_until is None or t < self.valid_until)
@@ -127,6 +130,8 @@ def soccernet_facts(game, labels):
 
     if len(coaches) == 2:
         facts.append(Fact("coaches", f"It is {coaches[0]}'s {home} against {coaches[1]}'s {away} today.", 70))
+    # a player is not introduced any more once he has been substituted
+    subbed_off = {e["player"]: e["time"] for e in match_events(labels) if e["kind"] == "sub_out"}
     player_facts = []
     for side, team in (("home", home), ("away", away)):
         tactic = lineup[side].get("tactic")
@@ -144,43 +149,51 @@ def soccernet_facts(game, labels):
         if bench:
             facts.append(Fact("bench", f"On the {team} bench: {name_list([player_name(p) for p in bench])}.", 40))
         player_facts.append([Fact("player", f"{player_name(p)}, number {p['shirt_number']} for {team}, "
-                                            f"is from {p['country']}.", 20)
+                                            f"is from {p['country']}.", 20,
+                                  valid_until=subbed_off.get(player_name(p)))
                              for p in starters[1:] if p.get("country") and p.get("shirt_number")])
     # alternate home and away players
     for pair in zip_longest(*player_facts):
         facts += [f for f in pair if f is not None]
 
-    # live state: only valid after it happened
+    # live state: only valid after it happened (the end of the minute given in the lineup facts)
+    events = match_events(labels)
     score = {"home": 0, "away": 0}
     goal_facts = [Fact("score", f"Still goalless here between {home} and {away}.", 30,
                        valid_from=(1, 10 * 60), repeat_every=REPEAT_SCORE)]
-    for e in match_events(labels):
+    for e in events:
         t = e["time"]
         if e["kind"] in ("goal", "own_goal"):
             scoring_side = e["side"] if e["kind"] == "goal" else ("away" if e["side"] == "home" else "home")
             score[scoring_side] += 1
-            how = f"{e['player']}'s goal" if e["kind"] == "goal" else f"an own goal by {e['player']}"
+            how = f"{e['player']} scores for {e['team']}" if e["kind"] == "goal" else f"an own goal by {e['player']}"
             goal_facts[-1].valid_until = t
-            goal_facts.append(Fact("score", f"A reminder of the score: {home} {score['home']}, {away} {score['away']}, "
-                                            f"after {how} {minute_phrase(e['minute'])}.", 90, valid_from=t,
+            goal_facts.append(Fact("goal", f"{home} {score['home']}, {away} {score['away']}: {how} "
+                                           f"{minute_phrase(e['minute'])}.", 98, valid_from=t, live=True,
                                    repeat_every=REPEAT_SCORE,
                                    repeat_text=f"The score remains {home} {score['home']}, {away} {score['away']}."))
         elif e["kind"] in ("yellow", "red"):
-            colour = "a yellow card" if e["kind"] == "yellow" else "a red card"
-            facts.append(Fact("card", f"{e['player']} ({e['team']}) has already seen {colour}, "
-                                      f"{minute_phrase(e['minute'])}.", 50, valid_from=t))
-        elif e["kind"] == "sub_in":
-            facts.append(Fact("substitution", f"{e['player']} came on for {e['other']} for {e['team']} "
-                                              f"{minute_phrase(e['minute'])}.", 45, valid_from=t))
+            what = "is booked" if e["kind"] == "yellow" else "is sent off"
+            facts.append(Fact("card", f"{e['player']} ({e['team']}) {what} {minute_phrase(e['minute'])}.", 85,
+                              valid_from=t, live=True))
     facts += goal_facts
 
+    # substitutions of the same minute are announced together
+    subs = [e for e in events if e["kind"] == "sub_in"]
+    for t in sorted({e["time"] for e in subs}):
+        group = [e for e in subs if e["time"] == t]
+        changes = [f"{e['player']} replaces {e['other']} for {e['team']}" for e in group]
+        label = "Substitution" if len(group) == 1 else f"{len(group)} changes"
+        facts.append(Fact("substitution", f"{label} {minute_phrase(group[0]['minute'])}: {name_list(changes)}.", 88,
+                          valid_from=t, live=True))
+
     ht = {"home": 0, "away": 0}
-    for e in match_events(labels):
+    for e in events:
         if e["time"][0] == 1 and e["kind"] in ("goal", "own_goal"):
             side = e["side"] if e["kind"] == "goal" else ("away" if e["side"] == "home" else "home")
             ht[side] += 1
     facts.append(Fact("half_time", f"At half-time it was {home} {ht['home']}, {away} {ht['away']}.", 95,
-                      valid_from=(2, 0), valid_until=(2, 10 * 60)))
+                      valid_from=(2, 0), valid_until=(2, 10 * 60), live=True))
     return facts
 
 
