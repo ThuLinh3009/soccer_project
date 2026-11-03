@@ -3,6 +3,11 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v1.6 (2026-11-03)
+- Notebook: tách bước mount Drive thành cell riêng (cell 3), có `force_remount=True`. Nếu `mount failed` thì vẫn chạy tiếp và lưu `models/` trên ổ Colab.
+- Notebook: thêm cell nén và tải kết quả về máy khi không dùng Drive.
+- Notebook: đánh số lại các cell: lấy code là cell 4, train là cell 8.
+
 ## v1.5 (2026-11-03)
 - Notebook: clone code từ repo `https://github.com/ThuLinh3009/soccer_project`.
 
