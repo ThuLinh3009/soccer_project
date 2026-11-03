@@ -69,6 +69,10 @@ def collate_fn_gpt(batch):
 
 
 
+def load_feats(path):
+    # memory-mapped: rows are read from disk only when a clip is sliced, instead of keeping every game in RAM
+    return np.load(path, mmap_mode="r")
+
 def feats2clip(feats, stride, clip_length, padding = "replicate_last", off=0):
     if padding =="zeropad":
         print("beforepadding", feats.shape)
@@ -134,24 +138,23 @@ class SoccerNetClips(Dataset):
 
         self.game_feats = list()
         self.game_labels = list()
+        self.clips = list()
 
         # NARY_CAPTION_V2 = {"corner" : 0,"substitution" : 0,"y-card" : 0,"whistle" : 0,"soccer-ball" : 0,"injury" : 0,"penalty" :
         for game in tqdm(self.listGames):
             # Load features
-            feat_half1 = np.load(os.path.join(self.path, game, "1_" + self.features))
-            feat_half1 = feat_half1.reshape(-1, feat_half1.shape[-1])
-            feat_half2 = np.load(os.path.join(self.path, game, "2_" + self.features))
-            feat_half2 = feat_half2.reshape(-1, feat_half2.shape[-1])
-
-            feat_half1 = feats2clip(torch.from_numpy(feat_half1), stride=self.window_size_frame, clip_length=self.window_size_frame)
-            feat_half2 = feats2clip(torch.from_numpy(feat_half2), stride=self.window_size_frame, clip_length=self.window_size_frame)
+            feat_half1 = load_feats(os.path.join(self.path, game, "1_" + self.features))
+            feat_half2 = load_feats(os.path.join(self.path, game, "2_" + self.features))
+            # clip starts as in feats2clip(stride=window, clip_length=window): one clip per window, not stored
+            starts_half1 = np.arange(0, feat_half1.shape[0] - 1, self.window_size_frame)
+            starts_half2 = np.arange(0, feat_half2.shape[0] - 1, self.window_size_frame)
 
             # Load labels
             labels = json.load(open(os.path.join(self.path, game, self.labels)))
 
-            label_half1 = np.zeros((feat_half1.shape[0], self.num_classes+1))
+            label_half1 = np.zeros((len(starts_half1), self.num_classes+1))
             label_half1[:,0]=1 # those are BG classes
-            label_half2 = np.zeros((feat_half2.shape[0], self.num_classes+1))
+            label_half2 = np.zeros((len(starts_half2), self.num_classes+1))
             label_half2[:,0]=1 # those are BG classes
 
 
@@ -187,10 +190,11 @@ class SoccerNetClips(Dataset):
             
             self.game_feats.append(feat_half1)
             self.game_feats.append(feat_half2)
+            self.clips += [(len(self.game_feats) - 2, start) for start in starts_half1]
+            self.clips += [(len(self.game_feats) - 1, start) for start in starts_half2]
             self.game_labels.append(label_half1)
             self.game_labels.append(label_half2)
 
-        self.game_feats = np.concatenate(self.game_feats)
         self.game_labels = np.concatenate(self.game_labels)
 
 
@@ -204,10 +208,13 @@ class SoccerNetClips(Dataset):
             clip_labels (np.array): clip of labels for the segmentation.
             clip_targets (np.array): clip of targets for the spotting.
         """
-        return self.game_feats[index,:,:], self.game_labels[index,:]
+        half_id, start = self.clips[index]
+        feats = self.game_feats[half_id]
+        idx = np.clip(np.arange(start, start + self.window_size_frame), 0, feats.shape[0] - 1)
+        return np.ascontiguousarray(feats[idx]), self.game_labels[index,:]
 
     def __len__(self):
-        return len(self.game_feats)
+        return len(self.clips)
 
 class SoccerNetClipsTesting(Dataset):
     """
@@ -323,16 +330,12 @@ class SoccerNetCaptions(Dataset):
         self.data = list()
         self.game_feats = list()
 
-        l_pad = self.window_size_frame//2 + self.window_size_frame%2
-        r_pad = self.window_size_frame//2 
         looper = self.listGames
 
         for game_id, game in enumerate(tqdm(looper)):
             # Load features
-            feat_half1 = np.load(os.path.join(self.path, game, "1_" + self.features))
-            feat_half1 = np.pad(feat_half1.reshape(-1, feat_half1.shape[-1]), ((l_pad, r_pad), (0, 0)), "edge")
-            feat_half2 = np.load(os.path.join(self.path, game, "2_" + self.features))
-            feat_half2 = np.pad(feat_half2.reshape(-1, feat_half2.shape[-1]), ((l_pad, r_pad), (0, 0)), "edge")
+            feat_half1 = load_feats(os.path.join(self.path, game, "1_" + self.features))
+            feat_half2 = load_feats(os.path.join(self.path, game, "2_" + self.features))
             
             self.game_feats.append((feat_half1, feat_half2)) 
 
@@ -422,8 +425,6 @@ class SoccerNetClassification(Dataset):
         self.data = list()
         self.game_feats = list()
 
-        l_pad = self.window_size_frame//2 + self.window_size_frame%2
-        r_pad = self.window_size_frame//2 
         looper = self.listGames
         # if split == ["train"]:
         #     looper = self.listGames[103:120]
@@ -431,10 +432,8 @@ class SoccerNetClassification(Dataset):
         #     looper = self.listGames[10:20]
         for game_id, game in enumerate(tqdm(looper)):
             # Load features
-            feat_half1 = np.load(os.path.join(self.path, game, "1_" + self.features))
-            feat_half1 = np.pad(feat_half1.reshape(-1, feat_half1.shape[-1]), ((l_pad, r_pad), (0, 0)), "edge")
-            feat_half2 = np.load(os.path.join(self.path, game, "2_" + self.features))
-            feat_half2 = np.pad(feat_half2.reshape(-1, feat_half2.shape[-1]), ((l_pad, r_pad), (0, 0)), "edge")
+            feat_half1 = load_feats(os.path.join(self.path, game, "1_" + self.features))
+            feat_half2 = load_feats(os.path.join(self.path, game, "2_" + self.features))
             
             self.game_feats.append((feat_half1, feat_half2)) 
 
@@ -484,15 +483,17 @@ class SoccerNetVideoProcessor(object):
 
     def __init__(self, clip_length):
         self.clip_length = clip_length
+        self.l_pad = clip_length//2 + clip_length%2
+        self.r_pad = clip_length//2
 
     def __call__(self, video_fn, feats):
         video_id, half, frame = video_fn
         video_feature = feats[video_id][half]
-        #make sure that the clip lenght is right
-        start = min(frame, video_feature.shape[0] - self.clip_length)
-        video_feature = video_feature[start : start + self.clip_length]
-
-        return video_feature
+        # same clip as slicing the half after np.pad(..., (l_pad, r_pad), "edge"), without building the padded copy
+        n = video_feature.shape[0]
+        start = min(frame, n + self.l_pad + self.r_pad - self.clip_length)
+        idx = np.clip(np.arange(start, start + self.clip_length) - self.l_pad, 0, n - 1)
+        return np.ascontiguousarray(video_feature[idx])
 
 class TikTokenTextProcessor(object):
     def __init__(self, corpus, min_freq=5):
@@ -559,15 +560,11 @@ class PredictionCaptions(Dataset):
         self.data = list()
         self.game_feats = list()
 
-        l_pad = self.window_size_frame//2 + self.window_size_frame%2
-        r_pad = self.window_size_frame//2 
 
         for game_id, game in enumerate(tqdm(self.listGames)):
             # Load features
-            feat_half1 = np.load(os.path.join(self.path, game, "1_" + self.features))
-            feat_half1 = np.pad(feat_half1.reshape(-1, feat_half1.shape[-1]), ((l_pad, r_pad), (0, 0)), "edge")
-            feat_half2 = np.load(os.path.join(self.path, game, "2_" + self.features))
-            feat_half2 = np.pad(feat_half2.reshape(-1, feat_half2.shape[-1]), ((l_pad, r_pad), (0, 0)), "edge")
+            feat_half1 = load_feats(os.path.join(self.path, game, "1_" + self.features))
+            feat_half2 = load_feats(os.path.join(self.path, game, "2_" + self.features))
             
             self.game_feats.append((feat_half1, feat_half2)) 
 
