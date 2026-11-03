@@ -1,7 +1,10 @@
 # Changelog
 
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
-Code nằm trên GitHub: https://github.com/ThuLinh3009/soccernet-caption-deltalab. Mỗi phiên bản là một commit.
+Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
+
+## v1.5 (2026-11-03)
+- Notebook: clone code từ repo `https://github.com/ThuLinh3009/soccer_project`.
 
 ## v1.4 (2026-11-03)
 - Notebook: lấy code bằng `git clone` từ GitHub thay vì giải nén file zip trên Drive. Chạy lại cell 3 để `git pull` bản mới, dữ liệu đã tải vẫn giữ nguyên.
