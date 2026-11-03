@@ -13,6 +13,7 @@ from SoccerNet.Evaluation.utils import AverageMeter, getMetaDataTask
 import glob
 from utils import evaluate as evaluate_spotting, get_list_games, LOCAL_SUBSET
 import SoccerNet.Evaluation.DenseVideoCaptioning as dvc_module
+from dataset import LazyClips
 from SoccerNet.Evaluation.DenseVideoCaptioning import evaluate as evaluate_dvc
 from nlgeval import NLGEval
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -300,9 +301,10 @@ def test_spotting(dataloader, model, model_name, save_predictions=True, NMS_wind
 
             # Batch size of 1
             game_ID = game_ID[0]
-            feat_half1 = feat_half1.squeeze(0)
+            clip_length = dataloader.dataset.window_size_frame
+            feat_half1 = LazyClips(feat_half1.squeeze(0).cuda(), clip_length)
             label_half1 = label_half1.float().squeeze(0)
-            feat_half2 = feat_half2.squeeze(0)
+            feat_half2 = LazyClips(feat_half2.squeeze(0).cuda(), clip_length)
             label_half2 = label_half2.float().squeeze(0)
 
             # Compute the output for batches of frames

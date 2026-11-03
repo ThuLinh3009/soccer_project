@@ -90,6 +90,21 @@ def feats2clip(feats, stride, clip_length, padding = "replicate_last", off=0):
     # print(idx)
     return feats[idx,...]
 
+class LazyClips:
+    """Same clips as feats2clip(feats, stride=1, off=clip_length//2), built only for the sliced frames."""
+    def __init__(self, feats, clip_length):
+        self.feats = feats
+        self.clip_length = clip_length
+        self.off = int(clip_length/2)
+
+    def __len__(self):
+        return self.feats.shape[0] - 1
+
+    def __getitem__(self, s):
+        offsets = torch.arange(-self.off, self.clip_length - self.off, device=self.feats.device)
+        idx = torch.arange(s.start, s.stop, device=self.feats.device)[:, None] + offsets[None, :]
+        return self.feats[idx.clamp(0, self.feats.shape[0] - 1)]
+
 class SoccerNetClips(Dataset):
     """
     This class is used to download and pre-compute clips from the SoccerNet dataset for spotting training phase.
@@ -276,13 +291,10 @@ class SoccerNetClipsTesting(Dataset):
         
             
 
-        feat_half1 = feats2clip(torch.from_numpy(feat_half1), 
-                        stride=1, off=int(self.window_size_frame/2), 
-                        clip_length=self.window_size_frame)
-
-        feat_half2 = feats2clip(torch.from_numpy(feat_half2), 
-                        stride=1, off=int(self.window_size_frame/2), 
-                        clip_length=self.window_size_frame)
+        # raw features only: clipping a whole half here needs ~2.8 GB of RAM,
+        # test_spotting builds the clips per batch with LazyClips instead
+        feat_half1 = torch.from_numpy(feat_half1)
+        feat_half2 = torch.from_numpy(feat_half2)
 
         return self.listGames[index], feat_half1, feat_half2, label_half1, label_half2
 
