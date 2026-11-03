@@ -11,14 +11,16 @@ import numpy as np
 from sklearn.metrics import average_precision_score
 from SoccerNet.Evaluation.utils import AverageMeter, getMetaDataTask
 import glob
-from utils import evaluate as evaluate_spotting
+from utils import evaluate as evaluate_spotting, get_list_games, LOCAL_SUBSET
+import SoccerNet.Evaluation.DenseVideoCaptioning as dvc_module
 from SoccerNet.Evaluation.DenseVideoCaptioning import evaluate as evaluate_dvc
 from nlgeval import NLGEval
 from torch.nn.utils.rnn import pack_padded_sequence
 
 import wandb
 
-caption_scorer = NLGEval(no_glove=True, no_skipthoughts=True)
+# SPICE is not reported and needs Stanford CoreNLP from `nlg-eval --setup`
+caption_scorer = NLGEval(no_glove=True, no_skipthoughts=True, metrics_to_omit=["SPICE"])
 
 def trainer(phase, train_loader,
             val_loader,
@@ -543,7 +545,12 @@ def test_captioning(dataloader, model, model_name, output_filename = "results_de
     if split == "challenge": 
         print("Visit eval.ai to evalaute performances on Challenge set")
         return None
-    
+
+    if LOCAL_SUBSET:
+        # the SoccerNet evaluator lists every game of the split, keep only the local ones
+        path = dataloader.dataset.path
+        dvc_module.getListGames = lambda split, task="caption": get_list_games(path, split)
+
     tight = evaluate_dvc(SoccerNet_path=dataloader.dataset.path, Predictions_path=output_results, split=dataloader.dataset.split, version=dataloader.dataset.version, prediction_file=output_filename, window_size=5, include_SODA=False)
     loose = evaluate_dvc(SoccerNet_path=dataloader.dataset.path, Predictions_path=output_results, split=dataloader.dataset.split, version=dataloader.dataset.version, prediction_file=output_filename, window_size=30, include_SODA=False)
 

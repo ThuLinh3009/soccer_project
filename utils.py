@@ -9,6 +9,21 @@ import numpy as np
 import glob
 import argparse
 
+# Set SN_LOCAL_SUBSET=1 to only use games already on disk and skip auto-download
+LOCAL_SUBSET = os.environ.get("SN_LOCAL_SUBSET") == "1"
+
+def get_list_games(path, split, features="baidu_soccer_embeddings.npy", labels="Labels-caption.json"):
+    if isinstance(split, str):
+        split = [split]
+    if not LOCAL_SUBSET:
+        return getListGames(split, task="caption")
+    games = []
+    for s in split:
+        needed = [f"1_{features}", f"2_{features}"] + ([] if s == "challenge" else [labels])
+        games += [g for g in getListGames([s], task="caption")
+                  if all(os.path.exists(os.path.join(path, g, f)) for f in needed)]
+    return games
+
 def evaluate(SoccerNet_path, Predictions_path, prediction_file="results_spotting.json", split="test", version=2, framerate=2, metric="loose"):
     # evaluate the prediction with respect to some ground truth
     # Params:
@@ -19,7 +34,7 @@ def evaluate(SoccerNet_path, Predictions_path, prediction_file="results_spotting
     #   - frame_rate: frame rate to evalaute from [2]
     # Return:
     #   - details mAP
-    list_games = getListGames(split=split, task="caption")
+    list_games = get_list_games(SoccerNet_path, split) if not zipfile.is_zipfile(SoccerNet_path) else getListGames(split=split, task="caption")
     targets_numpy = list()
     detections_numpy = list()
     closests_numpy = list()

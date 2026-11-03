@@ -14,10 +14,10 @@ import logging
 import json
 
 from collections import Counter
-from torchtext.vocab import vocab
 
 from SoccerNet.Downloader import getListGames
 from SoccerNet.Downloader import SoccerNetDownloader
+from utils import get_list_games, LOCAL_SUBSET
 from SoccerNet.Evaluation.utils import getMetaDataTask
 from torch.utils.data import default_collate
 import numpy as np
@@ -97,7 +97,7 @@ class SoccerNetClips(Dataset):
     def __init__(self, path, features="ResNET_PCA512.npy", split=["train"], version=2, 
                 framerate=2, window_size=15):
         self.path = path
-        self.listGames = getListGames(split, task="caption")
+        self.listGames = get_list_games(path, split, features)
         self.features = features
         self.window_size_frame = window_size*framerate
         self.version = version
@@ -107,12 +107,13 @@ class SoccerNetClips(Dataset):
         self.dict_event = dict_event
 
         logging.info("Checking/Download features and labels locally")
-        downloader = SoccerNetDownloader(path)
-        for s in split:
-            if s == "challenge":
-                downloader.downloadGames(files=[f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
-            else:
-                downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
+        if not LOCAL_SUBSET:
+            downloader = SoccerNetDownloader(path)
+            for s in split:
+                if s == "challenge":
+                    downloader.downloadGames(files=[f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
+                else:
+                    downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
 
         logging.info("Pre-compute clips")
 
@@ -200,7 +201,7 @@ class SoccerNetClipsTesting(Dataset):
     def __init__(self, path, features="ResNET_PCA512.npy", split=["test"], version=2, 
                 framerate=2, window_size=15):
         self.path = path
-        self.listGames = getListGames(split, task="caption")
+        self.listGames = get_list_games(path, split, features)
         self.features = features
         self.window_size_frame = window_size*framerate
         self.framerate = framerate
@@ -212,12 +213,13 @@ class SoccerNetClipsTesting(Dataset):
         self.dict_event = dict_event
 
         logging.info("Checking/Download features and labels locally")
-        downloader = SoccerNetDownloader(path)
-        for s in split:
-            if s == "challenge":
-                downloader.downloadGames(files=[f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
-            else:
-                downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
+        if not LOCAL_SUBSET:
+            downloader = SoccerNetDownloader(path)
+            for s in split:
+                if s == "challenge":
+                    downloader.downloadGames(files=[f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
+                else:
+                    downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], split=[s], task="caption", verbose=False,randomized=True)
 
     def __getitem__(self, index):
         """
@@ -295,15 +297,16 @@ class SoccerNetCaptions(Dataset):
         self.path = path
         self.split = split
         split = [s for s in split if s!= "challenge"]
-        self.listGames = getListGames(split, task="caption")
+        self.listGames = get_list_games(path, split, features)
         self.features = features
         self.window_size_frame = window_size*framerate
         self.version = version
         self.labels, self.num_classes, self.dict_event, _ = getMetaDataTask("caption", "SoccerNet", version)
 
         logging.info("Checking/Download features and labels locally")
-        downloader = SoccerNetDownloader(path)
-        downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], task="caption",split=split, verbose=False,randomized=True)
+        if not LOCAL_SUBSET:
+            downloader = SoccerNetDownloader(path)
+            downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], task="caption",split=split, verbose=False,randomized=True)
 
         self.data = list()
         self.game_feats = list()
@@ -371,7 +374,7 @@ class SoccerNetCaptions(Dataset):
         Returns:
             corpus (List[string]): vocabulary build from split.
         """
-        corpus = [annotation['anonymized'] for game in getListGames(split, task="caption") for annotation in json.load(open(os.path.join(self.path, game, self.labels)))["annotations"]]
+        corpus = [annotation['anonymized'] for game in get_list_games(self.path, split, self.features) for annotation in json.load(open(os.path.join(self.path, game, self.labels)))["annotations"]]
         return corpus
     
     def detokenize(self, tokens, remove_EOS=False):
@@ -392,7 +395,7 @@ class SoccerNetClassification(Dataset):
     def __init__(self, path, features="ResNET_TF2_PCA512.npy", split=["train"], version=2, framerate=2, window_size=15):
         self.path = path
         split = [s for s in split if s!= "challenge"]
-        self.listGames = getListGames(split, task="caption")
+        self.listGames = get_list_games(path, split, features)
         self.features = features
         self.window_size_frame = window_size*framerate
         self.version = version
@@ -400,8 +403,9 @@ class SoccerNetClassification(Dataset):
         self.class_labels = [k for k in self.dict_event.keys()]
 
         logging.info("Checking/Download features and labels locally")
-        downloader = SoccerNetDownloader(path)
-        downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], task="caption",split=split, verbose=False,randomized=True)
+        if not LOCAL_SUBSET:
+            downloader = SoccerNetDownloader(path)
+            downloader.downloadGames(files=[self.labels, f"1_{self.features}", f"2_{self.features}"], task="caption",split=split, verbose=False,randomized=True)
 
         self.data = list()
         self.game_feats = list()
@@ -512,6 +516,7 @@ class SoccerNetTextProcessor(object):
         self.build_vocab(corpus)
     
     def build_vocab(self, corpus):
+        from torchtext.vocab import vocab
         counter = Counter([token for c in corpus for token in self.tokenizer(c)])
         voc = vocab(counter, min_freq=self.min_freq, specials=["[PAD]", "[SOS]", "[EOS]", "[UNK]", "[MASK]", "[CLS]"])
         voc.set_default_index(voc['[UNK]'])
@@ -527,7 +532,7 @@ class PredictionCaptions(Dataset):
     def __init__(self, SoccerNetPath, PredictionPath, features="ResNET_TF2_PCA512.npy", split=["train"], version=2, framerate=2, window_size=15):
         self.path = SoccerNetPath
         self.PredictionPath = PredictionPath
-        self.listGames = getListGames(split, task="caption")
+        self.listGames = get_list_games(SoccerNetPath, split, features)
         self.features = features
         self.window_size_frame = window_size*framerate
         self.version = version
@@ -535,8 +540,9 @@ class PredictionCaptions(Dataset):
         self.split = split
 
         logging.info("Checking/Download features and labels locally")
-        downloader = SoccerNetDownloader(self.path)
-        downloader.downloadGames(files=[f"1_{self.features}", f"2_{self.features}"], task="caption", split=split, verbose=False,randomized=True)
+        if not LOCAL_SUBSET:
+            downloader = SoccerNetDownloader(self.path)
+            downloader.downloadGames(files=[f"1_{self.features}", f"2_{self.features}"], task="caption", split=split, verbose=False,randomized=True)
 
         self.data = list()
         self.game_feats = list()
@@ -613,7 +619,7 @@ class PredictionCaptions(Dataset):
         Returns:
             corpus (List[string]): vocabulary build from split.
         """
-        corpus = [annotation['anonymized'] for game in getListGames(split, task="caption") for annotation in json.load(open(os.path.join(self.path, game, self.labels)))["annotations"]]
+        corpus = [annotation['anonymized'] for game in get_list_games(self.path, split, self.features) for annotation in json.load(open(os.path.join(self.path, game, self.labels)))["annotations"]]
         return corpus
 
 
