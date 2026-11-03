@@ -6,3 +6,5 @@ videos/
 download.log
 .venv/
 *.pyc
+metadata/
+timelines/

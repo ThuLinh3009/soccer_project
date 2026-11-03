@@ -3,6 +3,16 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v2.0 (2026-11-03)
+Bình luận theo 2 luồng: YES khi có sự kiện, NO khi không có sự kiện.
+- `commentary_timeline.py` (mới): ghép lời bình sự kiện của model (`results_dense_captioning.json`, luồng YES) với bình luận ngoài lề ở các khoảng im lặng từ 45 giây trở lên (luồng NO), rồi ghi ra `commentary_timeline.json/.txt` cho từng trận. Dùng `--events_from_labels` để thử với lời bình thật, không cần model.
+- `match_facts.py` (mới): tạo các mẩu thông tin có mốc thời gian, mỗi mẩu chỉ được nói sau khi đã xảy ra:
+  - metadata SoccerNet: giới thiệu trận, trọng tài, khán giả, HLV, sơ đồ, đội hình, đội trưởng, dự bị, quốc tịch cầu thủ;
+  - diễn biến tới thời điểm hiện tại (từ `lineup.facts`): tỉ số (nhắc lại mỗi 10 phút), tỉ số hiệp 1, thẻ phạt, thay người. Không dùng trường `score` (tỉ số chung cuộc).
+- `football_data.py` (mới): tải và cache CSV của football-data.co.uk cho 5 giải VĐQG. Tính bảng xếp hạng, phong độ 5 trận và lịch sử đối đầu tính đến **trước ngày thi đấu**. Ghép tên đội SoccerNet sang football-data, đã kiểm tra khớp cả 19 đội của 30 trận.
+- Notebook: thêm bước 10 tạo và xem timeline.
+- `.gitignore`: bỏ qua `metadata/` (cache CSV) và `timelines/`.
+
 ## v1.9 (2026-11-03)
 - `download_subset.py`: thêm `--list_only` để in danh sách trận sẽ dùng (split, giải, mùa, ngày giờ, tỉ số) mà không tải.
 - Notebook: cell 6a xem danh sách trận trước, cell 6b mới tải dữ liệu.
