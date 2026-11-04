@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v2.2 (2026-11-04)
+Đối chiếu dữ liệu crawl (football-data.co.uk) với SoccerNet trên toàn bộ 405 trận của 5 giải (bỏ 108 trận Champions League): **405/405 trận ghép được, 404/405 trùng tỉ số**. Trận lệch duy nhất là Real Madrid - Rayo ngày 20/12/2015: tên thư mục SoccerNet ghi "1 - 0", thực tế là 10-2. Trên 9 trận có nhãn trên máy: trọng tài trùng 9/9.
+- `match_facts.py`: `lineup.facts` của SoccerNet **thiếu bàn thắng từ phạt đền**: Cazorla trong trận Crystal Palace 1-2 Arsenal, và một bàn của Swansea trong trận Chelsea 2-2 Swansea. Nếu số bàn trong `facts` không khớp tỉ số chung cuộc, timeline không đọc tỉ số đang diễn ra nữa, chỉ báo cầu thủ ghi bàn. Tỉ số hiệp 1 khi đó lấy từ CSV (`HTHG`/`HTAG`).
+- `football_data.py`: thêm alias `Internazionale` → Inter, `1. FSV Mainz 05` → Mainz, `Borussia` → M'gladbach. Đọc thêm tỉ số hiệp 1. `find_match()` tìm trận theo mùa và hai đội, vì mỗi cặp đội nhà - đội khách chỉ gặp nhau 1 lần mỗi mùa.
+- Một số trận challenge có ngày sai trong tên thư mục SoccerNet (Empoli - Inter, Juventus - Inter). Bảng xếp hạng, phong độ và đối đầu giờ tính theo ngày trong lịch thi đấu thật.
+
 ## v2.1 (2026-11-03)
 - `retune.py` (mới): chạy lại spotting và DVC từ checkpoint đã train, không train lại. Thử nhiều `NMS_threshold` × `top_k` trên một split, in METEOR, CIDEr, a_mAP, số lần báo sự kiện và số câu khác nhau, lưu `retune_<split>.csv`, và để lại `outputs/<split>` của tổ hợp tốt nhất.
 - Timeline, luồng NO:

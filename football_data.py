@@ -45,6 +45,10 @@ ALIASES = {
     "paris sg": "Paris SG",
     "inter": "Inter",
     "ac milan": "Milan",
+    "internazionale": "Inter",
+    "1. fsv mainz 05": "Mainz",
+    # SoccerNet calls Monchengladbach just "Borussia" (Dortmund is always "Dortmund")
+    "borussia": "M'gladbach",
 }
 
 
@@ -92,6 +96,8 @@ def load_season(division, season, cache_dir):
             "away": row["AwayTeam"],
             "hg": int(row["FTHG"]),
             "ag": int(row["FTAG"]),
+            "hthg": int(row["HTHG"]) if row.get("HTHG", "").strip() else None,
+            "htag": int(row["HTAG"]) if row.get("HTAG", "").strip() else None,
         })
     return matches
 
@@ -176,6 +182,11 @@ class LeagueHistory:
             out.append({"date": m["date"], "opponent": m["away"] if home else m["home"], "home": home,
                         "gf": gf, "ga": ga, "result": "W" if gf > ga else "D" if gf == ga else "L"})
         return out
+
+    def find_match(self, home, away):
+        """The game itself: in a league season each home/away pairing is played exactly once."""
+        games = [m for m in self.matches if m["season"] == self.season and m["home"] == home and m["away"] == away]
+        return games[0] if len(games) == 1 else None
 
     def head_to_head(self, team_a, team_b, before, n=5):
         """Last n league meetings between the two teams before the date, oldest first."""

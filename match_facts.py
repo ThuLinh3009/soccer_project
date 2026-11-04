@@ -106,7 +106,17 @@ def match_events(labels):
     return sorted(events, key=lambda e: e["time"])
 
 
-def soccernet_facts(game, labels):
+def score_of(events, until=None):
+    """Score from the goal / own goal events, optionally only those before `until`."""
+    score = {"home": 0, "away": 0}
+    for e in events:
+        if e["kind"] in ("goal", "own_goal") and (until is None or e["time"] < until):
+            side = e["side"] if e["kind"] == "goal" else ("away" if e["side"] == "home" else "home")
+            score[side] += 1
+    return score["home"], score["away"]
+
+
+def soccernet_facts(game, labels, half_time_score=None):
     league_folder, season, _ = game.split("/")
     league = LEAGUES.get(league_folder, league_folder)
     home, away = labels["home"]["name"], labels["away"]["name"]
@@ -158,15 +168,25 @@ def soccernet_facts(game, labels):
 
     # live state: only valid after it happened (the end of the minute given in the lineup facts)
     events = match_events(labels)
+    # the lineup facts miss some goals (penalties): the final score field is only used to check them,
+    # if they do not add up the running score is not said at all
+    final = tuple(int(x) for x in re.findall(r"\d+", labels.get("score", ""))[:2])
+    score_known = len(final) == 2 and score_of(events) == final
+    if not score_known:
+        print(f"{game}: goals in the lineup facts {score_of(events)} do not match the final score {final}, "
+              f"the running score is left out")
     score = {"home": 0, "away": 0}
     goal_facts = [Fact("score", f"Still goalless here between {home} and {away}.", 30,
-                       valid_from=(1, 10 * 60), repeat_every=REPEAT_SCORE)]
+                       valid_from=(1, 10 * 60), repeat_every=REPEAT_SCORE)] if score_known else []
     for e in events:
         t = e["time"]
         if e["kind"] in ("goal", "own_goal"):
             scoring_side = e["side"] if e["kind"] == "goal" else ("away" if e["side"] == "home" else "home")
             score[scoring_side] += 1
             how = f"{e['player']} scores for {e['team']}" if e["kind"] == "goal" else f"an own goal by {e['player']}"
+            if not score_known:
+                facts.append(Fact("goal", f"Goal: {how} {minute_phrase(e['minute'])}.", 98, valid_from=t, live=True))
+                continue
             goal_facts[-1].valid_until = t
             goal_facts.append(Fact("goal", f"{home} {score['home']}, {away} {score['away']}: {how} "
                                            f"{minute_phrase(e['minute'])}.", 98, valid_from=t, live=True,
@@ -187,31 +207,36 @@ def soccernet_facts(game, labels):
         facts.append(Fact("substitution", f"{label} {minute_phrase(group[0]['minute'])}: {name_list(changes)}.", 88,
                           valid_from=t, live=True))
 
-    ht = {"home": 0, "away": 0}
-    for e in events:
-        if e["time"][0] == 1 and e["kind"] in ("goal", "own_goal"):
-            side = e["side"] if e["kind"] == "goal" else ("away" if e["side"] == "home" else "home")
-            ht[side] += 1
-    facts.append(Fact("half_time", f"At half-time it was {home} {ht['home']}, {away} {ht['away']}.", 95,
-                      valid_from=(2, 0), valid_until=(2, 10 * 60), live=True))
+    # half-time score: from the lineup facts when they are complete, else from football-data
+    ht = score_of(events, until=(2, 0)) if score_known else half_time_score
+    if ht is not None:
+        facts.append(Fact("half_time", f"At half-time it was {home} {ht[0]}, {away} {ht[1]}.", 95,
+                          valid_from=(2, 0), valid_until=(2, 10 * 60), live=True))
     return facts
 
 
 def football_data_facts(game, labels, cache_dir):
-    """Standings, form and head-to-head before the game date, from football-data.co.uk."""
+    """Standings, form and head-to-head before the game date, from football-data.co.uk.
+    Returns (facts, half-time score of the game itself or None)."""
     league_folder, season, _ = game.split("/")
     date = _game_date(game)
     history = LeagueHistory(league_folder, season, cache_dir)
     if not history.available or date is None:
-        return []
+        return [], None
     candidates = history.teams()
     home_name, away_name = labels["home"]["name"], labels["away"]["name"]
     home = match_team(labels["home"].get("names", []) + [home_name], candidates)
     away = match_team(labels["away"].get("names", []) + [away_name], candidates)
     if home is None or away is None:
         print(f"football-data: could not match teams for {game}: {home_name} -> {home}, {away_name} -> {away}")
-        return []
+        return [], None
     facts = []
+    this_game = history.find_match(home, away)
+    half_time = (this_game["hthg"], this_game["htag"]) if this_game and this_game["hthg"] is not None else None
+    if this_game and abs((this_game["date"] - date).days) > 1:
+        # some SoccerNet folder dates are wrong (challenge split): trust the fixture date
+        print(f"football-data: {game}: date {date:%Y-%m-%d} -> {this_game['date']:%Y-%m-%d} from the fixture list")
+        date = this_game["date"]
 
     table = history.standings(before=date)
     rh, ra = table[home], table[away]
@@ -245,15 +270,15 @@ def football_data_facts(game, labels, cache_dir):
                                           f"{away_name} won {wins[away]}, and {draws} ended level. The last one, on "
                                           f"{last['date']:%d %B %Y}, finished {last['home']} {last['hg']}-{last['ag']} "
                                           f"{last['away']}.", 88))
-    return facts
+    return facts, half_time
 
 
 def build_facts(soccernet_path, game, labels_file="Labels-caption.json", cache_dir="metadata/football-data", crawl=True):
     labels = json.load(open(os.path.join(soccernet_path, game, labels_file)))
-    facts = soccernet_facts(game, labels)
+    crawled, half_time = [], None
     if crawl:
         try:
-            facts += football_data_facts(game, labels, cache_dir)
+            crawled, half_time = football_data_facts(game, labels, cache_dir)
         except Exception as e:
             print(f"football-data: skipped for {game}: {e}")
-    return labels, facts
+    return labels, soccernet_facts(game, labels, half_time) + crawled
