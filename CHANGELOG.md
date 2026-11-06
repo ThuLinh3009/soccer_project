@@ -3,6 +3,15 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.3 (2026-11-06)
+- `kaggle_run_v3.3.ipynb` (mới): chạy phần video → npy TimeSformer 768 chiều → ép thành 8576 → đo độ giống với npy Baidu gốc trên **Kaggle**.
+  - **Input:** video và weights `.pdparams` lấy từ Kaggle Dataset (`/kaggle/input`), dù dataset đã giải nén hay còn là file `.zip`. Bỏ qua các file rác `__MACOSX`.
+  - **Dữ liệu tải về:** npy Baidu gốc và nhãn tải từ HuggingFace vào `/kaggle/tmp`.
+  - **2 GPU T4 chạy song song:** các trận được chia cho 2 GPU, mỗi GPU một tiến trình. Notebook in tiến độ mỗi phút và lưu log riêng cho từng GPU.
+  - **Kết quả:** lưu ở `/kaggle/working/outputs`, gồm npy TimeSformer, phép ép đã học và bảng độ giống. Khi thêm output của lần chạy trước làm Input, notebook dùng lại npy đã trích, không trích lại.
+  - **Bảng độ giống:** hiển thị cho valid và test, kèm hai mốc so sánh.
+- Notebook Colab đổi tên thành `colab_run_v3.3.ipynb`, nội dung không đổi.
+
 ## v3.2 (2026-11-06)
 Mục 12 chạy độc lập: video → npy TimeSformer 768 chiều → ép thành 8576 → đo độ giống với npy Baidu gốc. Không cần train, không cần cell 5–11.
 - Cell 12a tự cài `SoccerNet` và `av`. Trước đây `av` (đọc video) chưa được cài nếu bỏ qua cell 5.
