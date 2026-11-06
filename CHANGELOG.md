@@ -3,6 +3,21 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.4 (2026-11-06)
+- `colab_video2npy_v3.4.ipynb` (mới): notebook Colab gọn, chỉ có 9 cell **chạy lần lượt từ trên xuống**:
+  1. GPU
+  2. Cấu hình (`DRIVE_ROOT`)
+  3. Mount Drive, kiểm tra video zip và weights
+  4. Lấy code và cài thư viện
+  5. Giải nén video, tải npy Baidu gốc
+  6. Video → npy TimeSformer 768 chiều, sao lưu lên Drive
+  7. Ép 768 → 8576
+  8. Bảng độ giống với npy Baidu gốc
+  9. Xem thử npy vừa tạo
+
+  Không còn các cell train / chấm caption xen giữa.
+- `colab_run_v3.4.ipynb` (luồng caption đầy đủ, kèm mục 12) và `kaggle_run_v3.4.ipynb` chỉ đổi số phiên bản.
+
 ## v3.3 (2026-11-06)
 - `kaggle_run_v3.3.ipynb` (mới): chạy phần video → npy TimeSformer 768 chiều → ép thành 8576 → đo độ giống với npy Baidu gốc trên **Kaggle**.
   - **Input:** video và weights `.pdparams` lấy từ Kaggle Dataset (`/kaggle/input`), dù dataset đã giải nén hay còn là file `.zip`. Bỏ qua các file rác `__MACOSX`.
