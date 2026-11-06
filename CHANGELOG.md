@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.2 (2026-11-06)
+Mục 12 chạy độc lập: video → npy TimeSformer 768 chiều → ép thành 8576 → đo độ giống với npy Baidu gốc. Không cần train, không cần cell 5–11.
+- Cell 12a tự cài `SoccerNet` và `av`. Trước đây `av` (đọc video) chưa được cài nếu bỏ qua cell 5.
+- Bộ chuyển đổi và file `_report.json` (bảng độ giống) được lưu thẳng vào `sn-models` trên Drive.
+- Ghi rõ thứ tự chạy (cell 1–4 rồi 12a–12d). 12e–12f (chấm caption bằng model cũ) đánh dấu là tùy chọn.
+
 ## v3.1 (2026-11-06)
 Notebook chạy được trên tài khoản Google khác.
 - Mọi đường dẫn Drive giờ tính từ một biến `DRIVE_ROOT` ở cell 2, mặc định `/content/drive/MyDrive/soccer_project`. Các đường dẫn đó gồm `sn-models`, `dataset/Dataset.zip`, weights `.pdparams` và `timesformer768`.
