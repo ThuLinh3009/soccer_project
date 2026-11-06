@@ -3,6 +3,13 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.5 (2026-11-06)
+- `colab_video2npy_v3.5.ipynb`: **cell nào lỗi thì dừng ngay tại cell đó** và hiện log lỗi thật. Trước đây cell 6 và cell 7 chạy bằng `!python`, nên khi script lỗi notebook vẫn chạy tiếp, và lỗi chỉ lộ ra ở cell 8 dưới dạng `FileNotFoundError: mapper_timesformer_report.json`.
+  - Cell 6: chạy `timesformer_extract.py` qua `run()`, in log trực tiếp, báo lỗi khi exit code ≠ 0. Vẫn lưu các hiệp đã xong lên Drive dù bị lỗi giữa chừng. Kiểm tra đủ npy 768 chiều cho mọi hiệp, nếu thiếu thì liệt kê hiệp còn thiếu.
+  - Cell 7: in bảng ✅/❌ (TimeSformer 1/2, Baidu 1/2) cho từng trận, rồi chạy `feature_mapper.py` qua `run()`.
+  - Cell 8: nếu chưa có file report thì báo rõ là cell 7 chưa chạy xong.
+- `colab_run_v3.5.ipynb`, `kaggle_run_v3.5.ipynb`: chỉ đổi số phiên bản.
+
 ## v3.4 (2026-11-06)
 - `colab_video2npy_v3.4.ipynb` (mới): notebook Colab gọn, chỉ có 9 cell **chạy lần lượt từ trên xuống**:
   1. GPU
