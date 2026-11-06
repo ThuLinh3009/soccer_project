@@ -17,9 +17,9 @@ from argparse import ArgumentParser
 import numpy as np
 
 from match_facts import build_facts
-from utils import get_list_games
+from utils import get_list_games, DEFAULT_FEATURES
 
-FEATURES = "baidu_soccer_embeddings.npy"
+FEATURES = DEFAULT_FEATURES  # SN_FEATURES, used to read the half lengths
 EVENT_LABELS = {"corner", "substitution", "y-card", "whistle", "soccer-ball", "injury", "penalty",
                 "yr-card", "r-card", "soccer-ball-own", "penalty-missed", "", "comments"}
 

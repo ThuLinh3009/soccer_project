@@ -3,6 +3,31 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.0 (2026-11-06)
+Cách B: dùng model đã train trên feature Baidu (8576 chiều) với feature trích từ **video**, không train lại model caption/spotting.
+- `timesformer_extract.py` (mới): bản PyTorch của TimeSformer mà Baidu fine-tune trên SoccerNet (repo `baidu-research/Soccernet-features`, PaddlePaddle).
+  - **Kiến trúc:** ViT-Base, attention chia không gian / thời gian, 16 khung 224×224.
+  - **Luồng xử lý giống bản gốc:** lấy khung theo lưới 5 fps, mỗi giây một đoạn 5 giây, chia 255, resize cạnh ngắn về 224, cắt giữa. Feature là token CLS sau LayerNorm cuối, 768 chiều.
+  - **Đã kiểm tra:** với cùng weights, kết quả trùng bản Paddle gốc (sai lệch tối đa 2e-6, cosine 1,0000). File `.pdparams` đọc được mà không cần cài Paddle.
+  - **Khác bản gốc, có chủ đích:**
+    - Mỗi giây video cho 1 dòng, đoạn 5 giây có tâm ở giây đó (`--center_offset 2`), nên file có cùng số dòng với npy Baidu.
+    - Chạy batch trên GPU với fp16, thay vì batch 1, fp32 và 2–3 giờ mỗi hiệp như bản gốc.
+  - **Video:** chạy được với video 224p của SoccerNet và mp4 bất kỳ. Video lớn được thu về cạnh ngắn 256 trước, như Baidu làm. Đọc 1 hiệp 224p mất khoảng 16 giây.
+- `feature_mapper.py` (mới): học bộ chuyển đổi TimeSformer 768 → Baidu 8576 từ các trận có cả video lẫn npy Baidu.
+  - `train`:
+    - Tự tìm độ lệch thời gian giữa hai file.
+    - Ridge regression trên 5 giây quanh giây t (`--context 2`). Có thể thêm MLP (`--mlp`), chỉ giữ nếu tốt hơn trên valid.
+    - Báo cosine (tổng và theo 5 khối TPN/GTA/VTN/irCSN/I3D-Slow), tỉ lệ số giây đạt cosine ≥ 0,95, Pearson r và R². Kèm hai mốc so sánh: Baidu so với giây kế tiếp (khoảng 0,94) và hai giây ngẫu nhiên (khoảng 0,67).
+  - `apply`: ghi `1_/2_baidu_from_timesformer.npy`. `--ref_name` tạo bản sao npy thật của cùng các trận để so sánh công bằng.
+  - Đã thử với dữ liệu giả có độ lệch +2 giây: tìm đúng độ lệch.
+- `utils.py`: biến môi trường `SN_FEATURES` chọn file feature dùng để liệt kê các trận khi chấm điểm. Mặc định vẫn là Baidu. `commentary_timeline.py` dùng chung biến này.
+- Notebook mục 12:
+  - Giải nén video từ `Dataset.zip` trên Drive, tải nhãn và npy của đúng các trận đó.
+  - Trích TimeSformer, sao lưu lên Drive.
+  - Train bộ chuyển đổi (train / valid / test theo split SoccerNet).
+  - Chạy model cũ trên npy thật và npy giả của cùng các trận test, so METEOR / a_mAP.
+  - Weights `.pdparams` phải tải bằng trình duyệt từ OneDrive, vì link chặn tải tự động, rồi đặt vào `MyDrive/soccer_project/weights/`.
+
 ## v2.2 (2026-11-04)
 Đối chiếu dữ liệu crawl (football-data.co.uk) với SoccerNet trên toàn bộ 405 trận của 5 giải (bỏ 108 trận Champions League): **405/405 trận ghép được, 404/405 trùng tỉ số**. Trận lệch duy nhất là Real Madrid - Rayo ngày 20/12/2015: tên thư mục SoccerNet ghi "1 - 0", thực tế là 10-2. Trên 9 trận có nhãn trên máy: trọng tài trùng 9/9.
 - `match_facts.py`: `lineup.facts` của SoccerNet **thiếu bàn thắng từ phạt đền**: Cazorla trong trận Crystal Palace 1-2 Arsenal, và một bàn của Swansea trong trận Chelsea 2-2 Swansea. Nếu số bàn trong `facts` không khớp tỉ số chung cuộc, timeline không đọc tỉ số đang diễn ra nữa, chỉ báo cầu thủ ghi bàn. Tỉ số hiệp 1 khi đó lấy từ CSV (`HTHG`/`HTAG`).

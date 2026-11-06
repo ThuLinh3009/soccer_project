@@ -11,8 +11,12 @@ import argparse
 
 # Set SN_LOCAL_SUBSET=1 to only use games already on disk and skip auto-download
 LOCAL_SUBSET = os.environ.get("SN_LOCAL_SUBSET") == "1"
+# Feature file used to list the local games when no name is given (the SoccerNet evaluators): set
+# SN_FEATURES to the --features of the run so they score the same games, e.g. baidu_from_timesformer.npy
+DEFAULT_FEATURES = os.environ.get("SN_FEATURES", "baidu_soccer_embeddings.npy")
 
-def get_list_games(path, split, features="baidu_soccer_embeddings.npy", labels="Labels-caption.json"):
+def get_list_games(path, split, features=None, labels="Labels-caption.json"):
+    features = features or DEFAULT_FEATURES
     if isinstance(split, str):
         split = [split]
     if not LOCAL_SUBSET:
