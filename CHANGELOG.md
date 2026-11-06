@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.1 (2026-11-06)
+Notebook chạy được trên tài khoản Google khác.
+- Mọi đường dẫn Drive giờ tính từ một biến `DRIVE_ROOT` ở cell 2, mặc định `/content/drive/MyDrive/soccer_project`. Các đường dẫn đó gồm `sn-models`, `dataset/Dataset.zip`, weights `.pdparams` và `timesformer768`.
+- Cell 3: nếu không thấy `DRIVE_ROOT`, tự tìm thư mục `soccer_project` trong `MyDrive` (kể cả lối tắt tới thư mục được chia sẻ) và trong `Shared drives`, rồi in nội dung thư mục tìm được.
+- Cell 12a: báo lỗi rõ ràng nếu thiếu `Dataset.zip`.
+
 ## v3.0 (2026-11-06)
 Cách B: dùng model đã train trên feature Baidu (8576 chiều) với feature trích từ **video**, không train lại model caption/spotting.
 - `timesformer_extract.py` (mới): bản PyTorch của TimeSformer mà Baidu fine-tune trên SoccerNet (repo `baidu-research/Soccernet-features`, PaddlePaddle).
