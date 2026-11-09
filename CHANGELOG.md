@@ -3,6 +3,14 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.8 (2026-11-09)
+- `colab_video2caption_v3.8.ipynb`: đọc được video **mp4** và các định dạng khác, không chỉ `*_224p.mkv`.
+  - Nhận các file tên bắt đầu bằng số hiệp `1` hoặc `2`, đuôi `.mkv`, `.mp4`, `.avi`, `.mov` hoặc `.webm`. Ví dụ: `1_224p.mkv`, `2_720p.mp4`, `1.mp4`.
+  - Một hiệp có nhiều độ phân giải thì ưu tiên 224p, vì trích nhanh nhất.
+  - Video được gom về `/content/videos_all/<giải>/<mùa>/<trận>/{1,2}_video` (symlink), rồi trích bằng `--video_name "{half}_video"`.
+  - Cảnh báo các trận chỉ có 1 hiệp.
+- `colab_video2npy_v3.8.ipynb`, `colab_run_v3.8.ipynb`, `kaggle_run_v3.8.ipynb`: chỉ đổi số phiên bản.
+
 ## v3.7 (2026-11-09)
 - `colab_video2caption_v3.7.ipynb`: luồng **từ đầu** (video của mình → npy → train model bình luận) chạy được khi **thêm nhiều video**.
   - Video lấy từ `soccer_project/dataset/`: **mọi file `.zip`** (bất kỳ tên) và/hoặc thư mục đã giải nén `<giải>/<mùa>/<trận>/{1,2}_224p.mkv`. Chỉ giải nén video chưa có. Tất cả được gom về `/content/videos_all` bằng symlink.
