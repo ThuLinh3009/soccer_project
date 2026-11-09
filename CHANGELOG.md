@@ -3,6 +3,23 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.9 (2026-11-09)
+- `fifa_crawl.py` (mới): crawl metadata trận đấu từ FIFA (API JSON công khai mà www.fifa.com dùng) ra CSV cho luồng NO / INFO.
+  - **Đầu vào** (tham số dòng lệnh, hoặc nhập từ bàn phím nếu bỏ trống):
+    - `--season`: ví dụ `2023` hoặc `2023/2024`.
+    - `--team_a`, `--team_b`: câu lạc bộ hoặc đội tuyển.
+    - Tùy chọn: `--competition`, `--match`, `--women`, `--form`, `--h2h_years`, `--out`.
+  - **Đầu ra:** mỗi trận một thư mục trong `metadata/fifa/`, gồm:
+    - `match_info.csv`, `lineups.csv`, `staff.csv`, `events.csv`
+    - `standings_before.csv`: tính từ các trận **trước** giờ bóng lăn
+    - `form.csv`, `head_to_head.csv`
+    - `facts.csv`: câu bình luận có sẵn, kèm `priority`, `live`, `valid_from` / `valid_until` (hiệp, giây), `repeat_every`, cùng dạng `Fact` của `match_facts.py`
+    - `raw/*.json`
+  - Bàn thắng được nhận theo thời điểm tỉ số thay đổi: có cả bàn phạt đền và phản lưới, không tính loạt luân lưu. Thẻ phạt và thay người chỉ được nói từ phút xảy ra.
+  - Phạm vi dữ liệu do FIFA quyết định, ví dụ Premier League chỉ có từ mùa 2020/2021. Các trận SoccerNet 2014–2017 không có.
+  - Đã chạy thử: Arsenal – Liverpool mùa 2023/2024 (3 trận) và chung kết World Cup 2022 Argentina – France.
+- Các notebook: chỉ đổi số phiên bản thành v3.9.
+
 ## v3.8 (2026-11-09)
 - `colab_video2caption_v3.8.ipynb`: đọc được video **mp4** và các định dạng khác, không chỉ `*_224p.mkv`.
   - Nhận các file tên bắt đầu bằng số hiệp `1` hoặc `2`, đuôi `.mkv`, `.mp4`, `.avi`, `.mov` hoặc `.webm`. Ví dụ: `1_224p.mkv`, `2_720p.mp4`, `1.mp4`.
