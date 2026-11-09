@@ -3,6 +3,14 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.7 (2026-11-09)
+- `colab_video2caption_v3.7.ipynb`: luồng **từ đầu** (video của mình → npy → train model bình luận) chạy được khi **thêm nhiều video**.
+  - Video lấy từ `soccer_project/dataset/`: **mọi file `.zip`** (bất kỳ tên) và/hoặc thư mục đã giải nén `<giải>/<mùa>/<trận>/{1,2}_224p.mkv`. Chỉ giải nén video chưa có. Tất cả được gom về `/content/videos_all` bằng symlink.
+  - Cell 5 in số trận có video theo split, và báo lỗi nếu split train, valid hoặc test không có trận nào.
+  - Cell 12 (mới): thử NMS 0,3 / 0,4 / 0,5 / 0,7 × top_k 1 / 3 trên **valid** bằng `retune.py`, tự lấy tổ hợp `METEOR_loose` cao nhất rồi chấm trên **test**. Không train lại. top_k 3 giảm việc lặp một câu.
+  - Ghi chú: với 10 trận (train 6), model bình luận bị sập về một câu. Nên có tối thiểu khoảng 30 trận.
+- `colab_video2npy_v3.7.ipynb`, `colab_run_v3.7.ipynb`, `kaggle_run_v3.7.ipynb`: chỉ đổi số phiên bản.
+
 ## v3.6 (2026-11-09)
 - `colab_video2caption_v3.6.ipynb` (mới): nối **video → npy 8576 chiều** với **train model bình luận**, 13 cell chạy lần lượt.
   - Cell 6: video → npy TimeSformer 768 chiều. Dùng lại các hiệp đã trích trên Drive (`timesformer768/`).
