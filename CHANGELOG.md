@@ -3,6 +3,17 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v3.6 (2026-11-09)
+- `colab_video2caption_v3.6.ipynb` (mới): nối **video → npy 8576 chiều** với **train model bình luận**, 13 cell chạy lần lượt.
+  - Cell 6: video → npy TimeSformer 768 chiều. Dùng lại các hiệp đã trích trên Drive (`timesformer768/`).
+  - Cell 7: học phép ép 768 → 8576. Bỏ qua nếu `sn-models/mapper_timesformer.pt` đã có, trừ khi `RETRAIN_MAPPER = True`.
+  - Cell 8: `feature_mapper.py apply` cho cả train, valid và test, ra `1_/2_baidu_from_timesformer.npy`.
+  - Cell 11: `main.py --features baidu_from_timesformer.npy` (classifying → captioning → spotting → dvc). Model bình luận chỉ thấy feature tạo từ video, không dùng npy Baidu gốc. Lưu ở `sn-models/gpt2-video10`, không ghi đè `gpt2-30games`.
+  - `FEATURES = "timesformer768.npy"` để train thẳng trên npy 768 chiều, không qua phép ép (code tự nhận số chiều).
+  - `SN_LOCAL_SUBSET=1` và `SN_FEATURES=FEATURES`: chỉ dùng các trận có video (train 6, valid 2, test 2).
+  - Cell nào lỗi thì dừng tại cell đó (hàm `run()`).
+- `colab_video2npy_v3.6.ipynb`, `colab_run_v3.6.ipynb`, `kaggle_run_v3.6.ipynb`: chỉ đổi số phiên bản.
+
 ## v3.5 (2026-11-06)
 - `colab_video2npy_v3.5.ipynb`: **cell nào lỗi thì dừng ngay tại cell đó** và hiện log lỗi thật. Trước đây cell 6 và cell 7 chạy bằng `!python`, nên khi script lỗi notebook vẫn chạy tiếp, và lỗi chỉ lộ ra ở cell 8 dưới dạng `FileNotFoundError: mapper_timesformer_report.json`.
   - Cell 6: chạy `timesformer_extract.py` qua `run()`, in log trực tiếp, báo lỗi khi exit code ≠ 0. Vẫn lưu các hiệp đã xong lên Drive dù bị lỗi giữa chừng. Kiểm tra đủ npy 768 chiều cho mọi hiệp, nếu thiếu thì liệt kê hiệp còn thiếu.
