@@ -99,11 +99,19 @@ def live_slots(facts, half, event_seconds, half_len, args):
 
 
 def build_timeline(game, soccernet_path, predictions, args):
-    labels, facts = build_facts(soccernet_path, game, cache_dir=args.cache_dir, crawl=not args.no_crawl)
+    if args.events_only:
+        # yes flow only: no metadata facts (the no flow is done later, at test time)
+        labels = None if predictions is not None else json.load(
+            open(os.path.join(soccernet_path, game, "Labels-caption.json"), encoding="utf-8"))
+        facts = []
+    else:
+        labels, facts = build_facts(soccernet_path, game, cache_dir=args.cache_dir, crawl=not args.no_crawl)
     events = load_events(game, soccernet_path, predictions, labels)
     timeline = [{"half": h, "second": s, "gameTime": format_game_time(h, s), "flow": "yes",
                  "topic": label or "comment", "text": text, "confidence": conf}
                 for (h, s), text, label, conf in events]
+    if args.events_only:
+        return sorted(timeline, key=lambda c: (c["half"], c["second"]))
     clock_of = lambda half, sec: (half - 1) * 45 * 60 + sec
     goal_clocks = [clock_of(*f.valid_from) for f in facts if f.topic == "goal"]
 
@@ -176,6 +184,8 @@ if __name__ == "__main__":
     parser.add_argument("--predictions", default=None, help="models/<name>/outputs/<split> with results_dense_captioning.json")
     parser.add_argument("--events_from_labels", action="store_true", help="use ground-truth captions as event comments")
     parser.add_argument("--split", default="test", help="split to use with --events_from_labels")
+    parser.add_argument("--events_only", action="store_true",
+                        help="only the event comments (yes flow), no background facts (no flow)")
     parser.add_argument("--out_dir", default=None, help="where to write commentary_timeline.json/.txt")
     parser.add_argument("--cache_dir", default="metadata/football-data", help="cache for football-data.co.uk CSVs")
     parser.add_argument("--no_crawl", action="store_true", help="only use the SoccerNet metadata, no internet")

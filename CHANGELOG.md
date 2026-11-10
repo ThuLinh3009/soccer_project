@@ -3,6 +3,13 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.0 (2026-11-10)
+- `commentary_timeline.py`: thêm tùy chọn `--events_only`. Timeline chỉ gồm các câu bình luận sự kiện (luồng YES), không chèn câu thông tin ngoài lề (luồng NO), không đọc metadata và không crawl.
+- `colab_video2caption_v4.0.ipynb`:
+  - Cell 13 thành **Timeline sự kiện (luồng YES)** và chạy với `--events_only`. Notebook train chỉ dành cho luồng YES. Luồng NO (metadata → LLM) thuộc bước test pipeline.
+  - Sửa ghi chú cell 11: số trận lấy theo cell 5 (ví dụ 60 trận: 40 / 10 / 10), không còn ghi cứng "train 6, valid 2, test 2".
+- `colab_video2npy_v4.0.ipynb`, `colab_run_v4.0.ipynb`, `kaggle_run_v4.0.ipynb`: chỉ đổi số phiên bản.
+
 ## v3.9 (2026-11-09)
 - `fifa_crawl.py` (mới): crawl metadata trận đấu từ FIFA (API JSON công khai mà www.fifa.com dùng) ra CSV cho luồng NO / INFO.
   - **Đầu vào** (tham số dòng lệnh, hoặc nhập từ bàn phím nếu bỏ trống):
