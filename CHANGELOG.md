@@ -3,6 +3,23 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.4 (2026-11-11)
+- `no_flow_llm.py` (mới): luồng NO lúc test. LLM của ElevenLabs Agents (chế độ chat chỉ văn bản) sinh câu bình luận nền trong các khoảng trống giữa sự kiện. Không train, không cần nhãn.
+  - Đầu vào: thư mục metadata của `fifa_crawl.py` (`facts.csv`, `events.csv`, `match_info.csv`), thư mục video hiệp (`--video_dir`, dùng để lấy độ dài mỗi hiệp) và sự kiện của luồng YES.
+  - Sự kiện luồng YES: `--yes_events` (file `results_dense_captioning.json` hoặc `commentary_timeline.json` của model đã train). Khi model YES chưa xong thì tạm dùng `--events_from_fifa`, lấy sự kiện trong `events.csv` làm mốc khoảng trống.
+  - Chọn fact cho từng chỗ trống bằng đúng luật của `commentary_timeline.py` (độ ưu tiên, thời điểm fact có hiệu lực, nhắc lại tỉ số...). Sau đó LLM viết lại thành 1 câu nói tự nhiên. Ngữ cảnh gửi cho LLM gồm phút, tỉ số lúc đó, sự kiện gần nhất và vài câu đã nói, để tránh lặp.
+  - Chặn LLM bịa số: câu trả lời có con số không có trong ngữ cảnh, hoặc câu quá dài, thì dùng lại câu fact gốc.
+  - Agent được tạo 1 lần qua API, id lưu ở `metadata/elevenlabs_agent.json`. Mỗi lần chạy, prompt và model của agent được cập nhật lại. API key lấy từ biến môi trường `ELEVENLABS_API_KEY`, không ghi ra file.
+  - `--llm template` chạy offline, không gọi LLM, dùng câu fact gốc.
+  - Đầu ra: `commentary_timeline.json` / `.txt` gồm [EVENT]/[FIFA] cho sự kiện và [INFO] cho câu luồng NO.
+  - Đã chạy thử offline trên 2 trận test:
+    - Brazil 1-2 Norway (World Cup 2026): 45 sự kiện, 51 câu nền.
+    - Chelsea 2-1 Man City (WSL 2025/26): 36 sự kiện, 54 câu nền.
+  - Đã kiểm thử phần WebSocket với server giả: ping/pong, nhận câu trả lời, tự kết nối lại khi bị ngắt.
+- `commentary_timeline.py`: tách phần xếp lịch câu nền thành hàm `schedule_background()` và tách các tham số thành `add_slot_args()`, để dùng chung với `no_flow_llm.py`. Kết quả không đổi.
+- Thêm thư viện `websockets`.
+- Các notebook: chỉ đổi số phiên bản thành v4.4.
+
 ## v4.3 (2026-11-11)
 - `cut_halves.py` (mới): cắt video full trận thành `1_224p.mp4` và `2_224p.mp4` theo cấu trúc SoccerNet.
   - Đầu vào: file video, `--t1` / `--t2` là giây giao bóng hiệp 1 / hiệp 2 trong video (dạng giây, `mm:ss` hoặc `hh:mm:ss`), `--out_dir`.

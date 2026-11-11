@@ -35,6 +35,9 @@ We adapted a framework similar to the BLIP-2 model with the following components
 
     # only additional package is tiktoken and transformers used for GPT-2
     pip install tiktoken transformers
+
+    # test pipeline: cut_halves.py (PyAV) and the no flow with the ElevenLabs LLM (no_flow_llm.py)
+    pip install av websockets
     ```
 
 ## Downloading dataset - refer to the [Soccernet's main captioning repository](https://github.com/SoccerNet/sn-caption)

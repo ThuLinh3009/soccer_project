@@ -110,13 +110,22 @@ def build_timeline(game, soccernet_path, predictions, args):
     timeline = [{"half": h, "second": s, "gameTime": format_game_time(h, s), "flow": "yes",
                  "topic": label or "comment", "text": text, "confidence": conf}
                 for (h, s), text, label, conf in events]
-    if args.events_only:
-        return sorted(timeline, key=lambda c: (c["half"], c["second"]))
+    if not args.events_only:
+        for half, t, fact, text in schedule_background(events, facts, half_lengths(soccernet_path, game), args):
+            timeline.append({"half": half, "second": t, "gameTime": format_game_time(half, t), "flow": "no",
+                             "topic": fact.topic, "text": text, "confidence": None})
+    return sorted(timeline, key=lambda c: (c["half"], c["second"]))
+
+
+def schedule_background(events, facts, half_lens, args):
+    """No flow: pick the background fact for every free slot between the event comments.
+    events: [((half, second), text, label, confidence)], facts: match_facts.Fact list, half_lens: [len1, len2].
+    Returns [(half, second, fact, text)] (text = the fact's first or repeat wording)."""
     clock_of = lambda half, sec: (half - 1) * 45 * 60 + sec
     goal_clocks = [clock_of(*f.valid_from) for f in facts if f.topic == "goal"]
-
+    out = []
     last_said = {}  # fact index -> match second when it was last said
-    for half, half_len in zip((1, 2), half_lengths(soccernet_path, game)):
+    for half, half_len in zip((1, 2), half_lens):
         event_seconds = [s for (h, s), *_ in events if h == half]
         live = live_slots(facts, half, event_seconds, half_len, args)
         regular = [(t, gap) for t, gap in filler_slots(event_seconds, half_len, args)
@@ -139,9 +148,8 @@ def build_timeline(game, soccernet_path, predictions, args):
             fact = facts[best]
             text = fact.repeat_text if best in last_said else fact.text
             last_said[best] = clock
-            timeline.append({"half": half, "second": t, "gameTime": format_game_time(half, t), "flow": "no",
-                             "topic": fact.topic, "text": text, "confidence": None})
-    return sorted(timeline, key=lambda c: (c["half"], c["second"]))
+            out.append((half, t, fact, text))
+    return out
 
 
 def write_outputs(game, timeline, out_dir):
@@ -178,6 +186,19 @@ def _find(root, filename):
             yield os.path.join(dirpath, filename)
 
 
+def add_slot_args(parser):
+    """When background (no-flow) comments are placed; shared with no_flow_llm.py."""
+    parser.add_argument("--min_gap", type=int, default=45, help="only fill silences of at least this many seconds")
+    parser.add_argument("--after_event", type=int, default=15, help="seconds to wait after an event comment")
+    parser.add_argument("--before_event", type=int, default=10, help="seconds to keep free before the next event comment")
+    parser.add_argument("--spacing", type=int, default=90, help="seconds between two background comments")
+    parser.add_argument("--min_info_gap", type=int, default=30, help="minimum seconds between two background comments")
+    parser.add_argument("--long_gap", type=int, default=120, help="small talk only in silences at least this long")
+    parser.add_argument("--low_priority", type=int, default=50, help="facts below this priority count as small talk")
+    parser.add_argument("--goal_cooldown", type=int, default=120, help="no small talk for this many seconds after a goal")
+    parser.add_argument("--kickoff_delay", type=int, default=5, help="first background comment after kick-off")
+
+
 if __name__ == "__main__":
     parser = ArgumentParser(description="Merge event comments with background comments into one timeline")
     parser.add_argument("--soccernet_path", required=True, help="caption-2024 folder (features + labels)")
@@ -189,15 +210,7 @@ if __name__ == "__main__":
     parser.add_argument("--out_dir", default=None, help="where to write commentary_timeline.json/.txt")
     parser.add_argument("--cache_dir", default="metadata/football-data", help="cache for football-data.co.uk CSVs")
     parser.add_argument("--no_crawl", action="store_true", help="only use the SoccerNet metadata, no internet")
-    parser.add_argument("--min_gap", type=int, default=45, help="only fill silences of at least this many seconds")
-    parser.add_argument("--after_event", type=int, default=15, help="seconds to wait after an event comment")
-    parser.add_argument("--before_event", type=int, default=10, help="seconds to keep free before the next event comment")
-    parser.add_argument("--spacing", type=int, default=90, help="seconds between two background comments")
-    parser.add_argument("--min_info_gap", type=int, default=30, help="minimum seconds between two background comments")
-    parser.add_argument("--long_gap", type=int, default=120, help="small talk only in silences at least this long")
-    parser.add_argument("--low_priority", type=int, default=50, help="facts below this priority count as small talk")
-    parser.add_argument("--goal_cooldown", type=int, default=120, help="no small talk for this many seconds after a goal")
-    parser.add_argument("--kickoff_delay", type=int, default=5, help="first background comment after kick-off")
+    add_slot_args(parser)
     args = parser.parse_args()
     if args.predictions is None and not args.events_from_labels:
         parser.error("give --predictions or --events_from_labels")
