@@ -3,6 +3,16 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.3 (2026-11-11)
+- `cut_halves.py` (mới): cắt video full trận thành `1_224p.mp4` và `2_224p.mp4` theo cấu trúc SoccerNet.
+  - Đầu vào: file video, `--t1` / `--t2` là giây giao bóng hiệp 1 / hiệp 2 trong video (dạng giây, `mm:ss` hoặc `hh:mm:ss`), `--out_dir`.
+  - Mỗi hiệp bắt đầu đúng tại khung hình giao bóng, nên sự kiện trong `events.csv` của `fifa_crawl.py` (cột `half` và `second`) khớp với video.
+  - Encode lại thay vì `-c copy`, vì `-c copy` chỉ cắt được ở keyframe.
+  - Thu về 224p, bỏ tiếng, mặc định lấy 50 phút mỗi hiệp. Hiệp 1 không vượt quá điểm giao bóng hiệp 2.
+  - Chỉ cần PyAV, không cần cài ffmpeg.
+  - Đã kiểm thử trên video giả có đánh số từng khung hình: khung đầu tiên của mỗi hiệp đúng là khung tại `t1` / `t2`, kể cả khi `t2` lẻ (70,4 giây).
+- Các notebook: chỉ đổi số phiên bản thành v4.3.
+
 ## v4.2 (2026-11-11)
 - `fifa_crawl.py`: sửa lỗi tìm nhầm đội khi FIFA có nhiều đội cùng tên và ngang hạng.
   - Ví dụ: FIFA có 2 id "England" đội tuyển nam là 1888255 và 43942, nhưng chỉ id 43942 có trận.
