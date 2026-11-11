@@ -3,6 +3,11 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.9 (2026-11-11)
+- Trận Brazil – Norway: phần lớn lượt gọi LLM bị ElevenLabs từ chối với lỗi "exceeds your quota limit". Credit của gói Free hoặc hạn mức của key đã gần hết.
+- `colab_test_pipeline_v4.9.ipynb`: thêm `NO_FLOW_GAMES` ở cell 2 để chỉ chạy luồng NO (gọi LLM, tốn credit) cho các trận được chọn. Mặc định chỉ chạy trận Brazil – Norway, vì trận Chelsea đã chạy xong. Cell 9 bỏ qua trận chưa có timeline.
+- Các notebook khác: chỉ đổi số phiên bản thành v4.9.
+
 ## v4.8 (2026-11-11)
 - Lần chạy luồng NO đầu tiên với sự kiện YES thật (Chelsea – Man City): 53 câu nền, 52 câu do LLM viết. 1 câu phải dùng câu fact gốc vì ElevenLabs ngắt kết nối với lỗi "This request exceeds your quota limit". Sau đó các câu tiếp theo chạy bình thường.
 - `no_flow_llm.py`: gặp lỗi quota hoặc giới hạn tốc độ thì chờ 20, 40, rồi 60 giây trước khi thử lại (bản cũ chỉ chờ 2 giây nên cả 3 lần thử đều thất bại).
