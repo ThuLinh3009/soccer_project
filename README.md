@@ -1,5 +1,7 @@
 # SoccerNet 2024 - Dense Video Captioning
 
+> **Hướng dẫn tiếng Việt cho dự án AI bình luận bóng đá (cài đặt, train, test pipeline YES/NO): xem [HUONG_DAN.md](HUONG_DAN.md).**
+
 ## Introduction
 This repository contains the code and models for our SoccerNet 2024 Dense Video Captioning submission from [DeLTA Lab](https://sites.google.com/view/jmkang/about-our-lab). The project leverages a BLIP-2 like architecture with GPT-2 model as a language model.
 

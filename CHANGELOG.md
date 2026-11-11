@@ -3,6 +3,15 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.10 (2026-11-11)
+- `HUONG_DAN.md` (mới): hướng dẫn tiếng Việt cài đặt và chạy toàn bộ dự án.
+  - Tổng quan luồng YES / NO và sơ đồ pipeline.
+  - Những thứ cần chuẩn bị, cài đặt local, cấu trúc thư mục trên Drive.
+  - 3 giai đoạn: train luồng YES; chuẩn bị trận test (`cut_halves.py`, `fifa_crawl.py`); test pipeline trên Colab.
+  - Cách luồng NO tìm khoảng trống, danh sách file chính, lỗi thường gặp, bảo mật.
+- `README.md`: thêm link tới `HUONG_DAN.md` ở đầu file.
+- Các notebook: chỉ đổi số phiên bản thành v4.10.
+
 ## v4.9 (2026-11-11)
 - Trận Brazil – Norway: phần lớn lượt gọi LLM bị ElevenLabs từ chối với lỗi "exceeds your quota limit". Credit của gói Free hoặc hạn mức của key đã gần hết.
 - `colab_test_pipeline_v4.9.ipynb`: thêm `NO_FLOW_GAMES` ở cell 2 để chỉ chạy luồng NO (gọi LLM, tốn credit) cho các trận được chọn. Mặc định chỉ chạy trận Brazil – Norway, vì trận Chelsea đã chạy xong. Cell 9 bỏ qua trận chưa có timeline.
