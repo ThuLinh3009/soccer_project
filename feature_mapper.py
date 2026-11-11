@@ -201,25 +201,51 @@ def ridge_mapper(w, b, stats, offset, context):
 
 
 def train_mlp(train, val, offset, context, args, ymin, ymax):
-    x = np.concatenate([pairs(h, offset, context)[0] for h in train])
-    y = np.concatenate([pairs(h, offset, context)[1] for h in train])
-    cfg = {"kind": "mlp", "offset": offset, "context": context, "dx": x.shape[1], "hidden": args.hidden,
-           "x_mean": torch.from_numpy(x.mean(0)), "x_std": torch.from_numpy(x.std(0) + 1e-6),
-           "y_mean": torch.from_numpy(y.mean(0)), "y_std": torch.from_numpy(y.std(0) + 1e-6),
-           "ymin": ymin, "ymax": ymax}
+    """MLP on the same context rows as ridge. Memory: only the 768-d rows (fp32) and the 8576-d targets (fp16)
+    are kept on the device; the context rows of each batch are gathered on the fly (all rows at once would
+    need >10 GB for 40 games)."""
     dev = args.device
-    xs = ((torch.from_numpy(x) - cfg["x_mean"]) / cfg["x_std"]).to(dev)
-    ys = ((torch.from_numpy(y) - cfg["y_mean"]) / cfg["y_std"]).to(dev)  # z-scores: every block weighs the same
-    del x, y
-    mlp = make_mlp(xs.shape[1], args.hidden, 8576).to(dev)
+    srcs, idx, tgts, base = [], [], [], 0
+    for _, _, s, t in train:
+        n = min(len(s), len(t))
+        rows = np.arange(n)[:, None] + offset + np.arange(-context, context + 1)[None, :]
+        idx.append(np.clip(rows, 0, len(s) - 1) + base)   # context stays inside its half
+        srcs.append(s)
+        tgts.append(np.asarray(t[:n], dtype=np.float16))
+        base += len(s)
+    src = torch.from_numpy(np.concatenate(srcs))
+    idx = torch.from_numpy(np.concatenate(idx)).to(dev)
+    s_mean, s_std = src.mean(0), src.std(0) + 1e-6
+    y = torch.from_numpy(np.concatenate(tgts))
+    del srcs, tgts
+    y_mean = torch.zeros(y.shape[1], dtype=torch.float64)
+    y_sq = torch.zeros(y.shape[1], dtype=torch.float64)
+    for i in range(0, len(y), 65536):
+        c = y[i:i + 65536].double()
+        y_mean += c.sum(0)
+        y_sq += (c ** 2).sum(0)
+    y_mean /= len(y)
+    y_std = (y_sq / len(y) - y_mean ** 2).clamp_min(0).sqrt().float() + 1e-6
+    y_mean = y_mean.float()
+    k = 2 * context + 1
+    cfg = {"kind": "mlp", "offset": offset, "context": context, "dx": 768 * k, "hidden": args.hidden,
+           "x_mean": s_mean.repeat(k), "x_std": s_std.repeat(k), "y_mean": y_mean, "y_std": y_std,
+           "ymin": ymin, "ymax": ymax}
+    xs = ((src - s_mean) / s_std).to(dev)
+    ys = torch.empty(y.shape, dtype=torch.float16, device=dev)  # z-scores: every block weighs the same
+    for i in range(0, len(y), 65536):
+        ys[i:i + 65536] = ((y[i:i + 65536].float() - y_mean) / y_std).to(dev, torch.float16)
+    del src, y
+    print(f"  {len(idx)} training rows, input {cfg['dx']}, output 8576")
+    mlp = make_mlp(cfg["dx"], args.hidden, 8576).to(dev)
     opt = torch.optim.AdamW(mlp.parameters(), lr=args.lr, weight_decay=0.05)
     best, best_state = -1, None
     for epoch in range(args.epochs):
         mlp.train()
-        perm = torch.randperm(len(xs), device=dev)
-        for i in range(0, len(xs), args.mlp_batch):
+        perm = torch.randperm(len(idx), device=dev)
+        for i in range(0, len(idx), args.mlp_batch):
             j = perm[i:i + args.mlp_batch]
-            loss = nn.functional.mse_loss(mlp(xs[j]), ys[j])
+            loss = nn.functional.mse_loss(mlp(xs[idx[j]].reshape(len(j), -1)), ys[j].float())
             opt.zero_grad()
             loss.backward()
             opt.step()

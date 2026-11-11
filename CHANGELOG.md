@@ -3,6 +3,26 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.1 (2026-11-11)
+Mục tiêu: model bình luận sinh câu đa dạng hơn, không lặp một câu. Vẫn giữ npy 8576 chiều.
+- `feature_mapper.py`: viết lại phần train phép ép **MLP** (`--mlp`) để chạy được với 40+ trận.
+  - Bản cũ nạp toàn bộ dữ liệu vào RAM cùng lúc (hơn 10 GB với 40 trận).
+  - Bản mới chỉ giữ npy 768 chiều (fp32) và npy Baidu (fp16) trên GPU, ghép các giây context của từng batch khi train.
+  - Đã kiểm thử trên dữ liệu giả: train chạy được, và mapper lưu ra rồi nạp lại cho kết quả giống hệt.
+- `colab_video2caption_v4.1.ipynb`:
+  - Cell 2 có thêm cấu hình:
+    - `MAPPER_MLP = True`: thử phép ép MLP, giữ nếu tốt hơn ridge trên valid.
+    - `MAPPER_CONTEXT = 4`: dùng 9 giây TimeSformer quanh giây t, thay vì 5.
+    - `RETUNE_NMS`, `MIN_UNIQUE_RATIO`.
+    - Mặc định mới: `MODEL_NAME = "gpt2-video60-mlp"`, `MAX_EPOCHS = 20`.
+  - Cell 3: mỗi cấu hình phép ép có file riêng, ví dụ `mapper_timesformer_mlp_c4.pt`. Đổi cấu hình thì tự học lại, không ghi đè phép ép cũ.
+  - Cell 12:
+    - Chỉ chọn trong các tổ hợp có số câu khác nhau ≥ 10% số sự kiện, rồi mới so METEOR. Trước đây chọn tổ hợp chỉ sinh 3 câu cho 1633 sự kiện.
+    - Thử NMS 0.3 và 0.5, thay cho 4 mức.
+    - In bảng retune đầy đủ.
+  - `run()` bỏ các dòng thanh tiến trình để log gọn.
+- `colab_video2npy_v4.1.ipynb`, `colab_run_v4.1.ipynb`, `kaggle_run_v4.1.ipynb`: chỉ đổi số phiên bản.
+
 ## v4.0 (2026-11-10)
 - `commentary_timeline.py`: thêm tùy chọn `--events_only`. Timeline chỉ gồm các câu bình luận sự kiện (luồng YES), không chèn câu thông tin ngoài lề (luồng NO), không đọc metadata và không crawl.
 - `colab_video2caption_v4.0.ipynb`:
