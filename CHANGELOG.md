@@ -3,6 +3,15 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.2 (2026-11-11)
+- `fifa_crawl.py`: sửa lỗi tìm nhầm đội khi FIFA có nhiều đội cùng tên và ngang hạng.
+  - Ví dụ: FIFA có 2 id "England" đội tuyển nam là 1888255 và 43942, nhưng chỉ id 43942 có trận.
+  - `find_team` nay trả về mọi ứng viên ngang hạng. Crawler giữ ứng viên thật sự có trận với đội kia.
+  - Đã chạy thử:
+    - Mexico 2-3 England, vòng 16 đội World Cup 2026: 52 cầu thủ, 103 sự kiện, 61 câu fact.
+    - Arsenal – Liverpool 2023/24: vẫn ra đúng 3 trận như trước.
+- Các notebook: chỉ đổi số phiên bản thành v4.2.
+
 ## v4.1 (2026-11-11)
 Mục tiêu: model bình luận sinh câu đa dạng hơn, không lặp một câu. Vẫn giữ npy 8576 chiều.
 - `feature_mapper.py`: viết lại phần train phép ép **MLP** (`--mlp`) để chạy được với 40+ trận.

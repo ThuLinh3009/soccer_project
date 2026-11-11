@@ -109,9 +109,11 @@ def find_team(name, women=False):
         names = {txt(t["Name"]).lower(), (t.get("ShortClubName") or "").lower()}
         return (t.get("Gender") == gender, t.get("AgeType") in (4, 7), q in names,
                 t.get("FoundationYear") is not None, -len(txt(t["Name"])))
-    best = max(res, key=rank)
-    return {"id": best["IdTeam"], "name": txt(best["Name"]), "country": best.get("IdCountry"),
-            "founded": best.get("FoundationYear"), "city": best.get("City")}
+    # several teams can rank the same (FIFA has e.g. two senior men's "England" ids, only one with matches):
+    # return all of them, the caller keeps the one that has the match
+    top = rank(max(res, key=rank))
+    return [{"id": t["IdTeam"], "name": txt(t["Name"]), "country": t.get("IdCountry"),
+             "founded": t.get("FoundationYear"), "city": t.get("City")} for t in res if rank(t) == top]
 
 
 def parse_season(s):
@@ -450,13 +452,21 @@ def main():
     args.team_b = args.team_b or input("Đội bóng B: ").strip()
     year = parse_season(args.season)
 
-    a, b = find_team(args.team_a, args.women), find_team(args.team_b, args.women)
-    print(f"Đội A: {a['name']} (id {a['id']}, {a['country']}) | Đội B: {b['name']} (id {b['id']}, {b['country']})")
+    a_list, b_list = find_team(args.team_a, args.women), find_team(args.team_b, args.women)
+    b_by_id = {t["id"]: t for t in b_list}
     start = datetime(year, 1, 1, tzinfo=timezone.utc)
-    matches = [m for m in team_matches(a["id"], start, datetime(year + 1, 12, 31, tzinfo=timezone.utc))
-               if m.get("Home") and m.get("Away") and b["id"] in (m["Home"]["IdTeam"], m["Away"]["IdTeam"])
-               and season_matches(txt(m["SeasonName"]), year)
-               and (not args.competition or args.competition.lower() in txt(m["CompetitionName"]).lower())]
+    matches, a, b = [], a_list[0], b_list[0]
+    for cand in a_list:
+        matches = [m for m in team_matches(cand["id"], start, datetime(year + 1, 12, 31, tzinfo=timezone.utc))
+                   if m.get("Home") and m.get("Away")
+                   and ({m["Home"]["IdTeam"], m["Away"]["IdTeam"]} & b_by_id.keys())
+                   and season_matches(txt(m["SeasonName"]), year)
+                   and (not args.competition or args.competition.lower() in txt(m["CompetitionName"]).lower())]
+        if matches:
+            a = cand
+            b = b_by_id[({matches[0]["Home"]["IdTeam"], matches[0]["Away"]["IdTeam"]} & b_by_id.keys()).pop()]
+            break
+    print(f"Đội A: {a['name']} (id {a['id']}, {a['country']}) | Đội B: {b['name']} (id {b['id']}, {b['country']})")
     if not matches:
         sys.exit(f"Không có trận {a['name']} - {b['name']} trong mùa {args.season} trên FIFA "
                  f"(FIFA chỉ có dữ liệu một số giải/mùa, ví dụ Premier League từ 2020/2021).")
