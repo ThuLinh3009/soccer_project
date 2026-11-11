@@ -3,6 +3,18 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.5 (2026-11-11)
+- `no_flow_llm.py`: chạy thật với LLM ElevenLabs (agent text-only, `gemini-2.5-flash`) trên 2 trận test, sửa các lỗi phát hiện ra.
+  - Sửa lỗi câu trả lời bị lệch một lượt: agent gửi câu trả lời 2 lần (từng mảnh `agent_chat_response_part` và cả câu `agent_response`). Bản cũ lấy bản ghép từ các mảnh, nên câu `agent_response` còn sót lại bị đọc thành câu trả lời của lượt sau, và mỗi câu xuất hiện 2 lần. Nay chỉ lấy `agent_response`; các mảnh chỉ dùng dự phòng khi không nhận được câu hoàn chỉnh.
+  - Prompt: cấm thêm chi tiết hay nhận xét không có trong fact ("young", "strong", "crucial"...). Danh sách dài như đội hình hay ghế dự bị chỉ nói phần chính, tối đa 35 từ.
+  - Xoá các cụm chỉ thời gian trong ngày ("this afternoon", "tonight") vì LLM không biết giờ thi đấu. Câu dài quá 45 từ thì dùng lại câu fact gốc.
+  - Sửa cảnh báo DeprecationWarning của `websockets`.
+  - Kết quả với sự kiện FIFA làm mốc tạm:
+    - Brazil 1-2 Norway: 51 câu nền.
+    - Chelsea 2-1 Man City: 54 câu nền.
+    - Không câu nào phải dùng lại câu fact gốc. Phút và tỉ số đều khớp metadata.
+- Các notebook: chỉ đổi số phiên bản thành v4.5.
+
 ## v4.4 (2026-11-11)
 - `no_flow_llm.py` (mới): luồng NO lúc test. LLM của ElevenLabs Agents (chế độ chat chỉ văn bản) sinh câu bình luận nền trong các khoảng trống giữa sự kiện. Không train, không cần nhãn.
   - Đầu vào: thư mục metadata của `fifa_crawl.py` (`facts.csv`, `events.csv`, `match_info.csv`), thư mục video hiệp (`--video_dir`, dùng để lấy độ dài mỗi hiệp) và sự kiện của luồng YES.

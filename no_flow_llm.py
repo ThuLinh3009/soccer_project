@@ -49,6 +49,9 @@ the lines you already said. Answer with the line to be spoken, nothing else.
 Rules:
 - {language}, one or two short sentences, at most 35 words, natural spoken commentary.
 - Use only the information in the message. Never invent names, numbers, statistics, records or on-pitch actions.
+- Add no details or opinions that are not in the fact: no ages ("young"), no "strong", "crucial", "important", \
+no time of day, no weather.
+- A long list (line-up, bench): say only the most useful part, never more than 35 words.
 - You cannot see the pitch: do not describe what is happening now (no passes, shots, saves, chances).
 - Do not repeat the wording of the lines already said; vary how you start the sentence.
 - No quotes, no emojis, no markdown, no stage directions."""
@@ -158,9 +161,13 @@ def numbers_ok(answer, message):
     return all(n in allowed for n in re.findall(r"\d+", answer.replace(",", "")))
 
 
+# the LLM cannot know the time of day: drop it even when it ignores the rule
+TIME_OF_DAY = re.compile(r",?\s+(?:this|on this)\s+(?:afternoon|evening|morning)|,?\s+tonight", re.I)
+
+
 def clean(answer):
-    answer = answer.strip().strip('"').strip()
-    return re.sub(r"\s+", " ", answer)
+    answer = TIME_OF_DAY.sub("", answer.strip().strip('"').strip())
+    return re.sub(r"\s+", " ", answer).replace(" .", ".")
 
 
 # ---------------------------------------------------------------- ElevenLabs
@@ -204,7 +211,7 @@ class ElevenLabsLLM:
     def _connect(self):
         from websockets.sync.client import connect
         url = self._http("GET", f"/v1/convai/conversation/get-signed-url?agent_id={self.agent_id}")["signed_url"]
-        self.ws = connect(url, open_timeout=30, max_size=2 ** 22)
+        self.ws = connect(url, open_timeout=30, max_size=2 ** 22).__enter__()
         self.ws.send(json.dumps({"type": "conversation_initiation_client_data",
                                  "conversation_config_override": {"conversation": {"text_only": True}}}))
 
@@ -218,9 +225,14 @@ class ElevenLabsLLM:
                 if self.ws is None:
                     self._connect()
                 self.ws.send(json.dumps({"type": "user_message", "text": message}))
+                # the agent streams the reply (agent_chat_response_part) AND sends it whole (agent_response):
+                # wait for the whole one, else the next question would read this reply
                 deadline, parts = time.time() + timeout, []
                 while time.time() < deadline:
-                    ev = json.loads(self.ws.recv(timeout=deadline - time.time()))
+                    try:
+                        ev = json.loads(self.ws.recv(timeout=max(0.01, deadline - time.time())))
+                    except TimeoutError:
+                        break
                     kind = ev.get("type")
                     if kind == "ping":
                         self.ws.send(json.dumps({"type": "pong", "event_id": ev["ping_event"]["event_id"]}))
@@ -230,8 +242,10 @@ class ElevenLabsLLM:
                         part = ev["text_response_part"]
                         if part.get("type") == "delta":
                             parts.append(part.get("text", ""))
-                        elif part.get("type") == "stop" and parts:
-                            return "".join(parts)
+                        elif part.get("type") == "stop":
+                            deadline = min(deadline, time.time() + 5)  # agent_response should follow at once
+                if parts:
+                    return "".join(parts)
                 raise TimeoutError("no agent_response")
             except Exception as e:  # closed / timed out conversation: open a new one and retry
                 print(f"  LLM retry {attempt + 1}: {type(e).__name__}: {e}")
@@ -287,7 +301,7 @@ def main(args):
         text, used = fact_text, "template"
         if llm:
             answer = llm.ask(message)
-            if answer and numbers_ok(clean(answer), message) and len(clean(answer).split()) <= 60:
+            if answer and numbers_ok(clean(answer), message) and len(clean(answer).split()) <= 45:
                 text, used = clean(answer), "llm"
             else:
                 n_fallback += 1
