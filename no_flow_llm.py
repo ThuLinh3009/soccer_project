@@ -249,9 +249,11 @@ class ElevenLabsLLM:
                     return "".join(parts)
                 raise TimeoutError("no agent_response")
             except Exception as e:  # closed / timed out conversation: open a new one and retry
-                print(f"  LLM retry {attempt + 1}: {type(e).__name__}: {e}")
+                quota = "quota" in str(e).lower() or "rate" in str(e).lower()
+                wait = 20 * (attempt + 1) if quota else 2  # quota / rate limit: back off longer
+                print(f"  LLM retry {attempt + 1} in {wait}s: {type(e).__name__}: {str(e)[:150]}")
                 self.close()
-                time.sleep(2)
+                time.sleep(wait)
         return None
 
     def close(self):

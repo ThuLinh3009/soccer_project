@@ -3,6 +3,11 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.8 (2026-11-11)
+- Lần chạy luồng NO đầu tiên với sự kiện YES thật (Chelsea – Man City): 53 câu nền, 52 câu do LLM viết. 1 câu phải dùng câu fact gốc vì ElevenLabs ngắt kết nối với lỗi "This request exceeds your quota limit". Sau đó các câu tiếp theo chạy bình thường.
+- `no_flow_llm.py`: gặp lỗi quota hoặc giới hạn tốc độ thì chờ 20, 40, rồi 60 giây trước khi thử lại (bản cũ chỉ chờ 2 giây nên cả 3 lần thử đều thất bại).
+- Các notebook: chỉ đổi số phiên bản thành v4.8.
+
 ## v4.7 (2026-11-11)
 - Lần chạy đầu `colab_test_pipeline` trên Colab: luồng YES chạy được (Chelsea – Man City 37 sự kiện), nhưng luồng NO bị ElevenLabs trả **HTTP 401 Invalid API key**.
 - `colab_test_pipeline_v4.7.ipynb`, cell 8: kiểm tra key trước khi chạy luồng NO (gọi `GET /v1/convai/agents`). In mã trả về, độ dài key và 3 ký tự đầu (không in cả key). Key không hợp lệ thì dừng ngay với hướng dẫn sửa.
