@@ -321,8 +321,12 @@ def train(args):
 
 def apply(args):
     mapper = Mapper.load(args.mapper)
-    games = games_with(args.soccernet_path, args.splits, [args.src])
-    print(f"{len(games)} games with {args.src} in {args.splits}")
+    if args.games:  # any folders (e.g. new matches that are not in the SoccerNet splits)
+        games = [g.replace("\\", "/") for g in args.games]
+        print(f"{len(games)} games given with --games")
+    else:
+        games = games_with(args.soccernet_path, args.splits, [args.src])
+        print(f"{len(games)} games with {args.src} in {args.splits}")
     for g in games:
         for h in (1, 2):
             out = os.path.join(args.soccernet_path, g, f"{h}_{args.out_name}")
@@ -364,6 +368,8 @@ def main():
     a = sub.choices["apply"]
     a.add_argument("--mapper", required=True)
     a.add_argument("--splits", nargs="+", default=["test"])
+    a.add_argument("--games", nargs="+", default=None,
+                   help="game folders relative to --soccernet_path (instead of --splits), e.g. new matches")
     a.add_argument("--out_name", default="baidu_from_timesformer.npy")
     a.add_argument("--ref_name", default=None, help="also link the real Baidu files of the same games under this name")
     a.add_argument("--overwrite", action="store_true")

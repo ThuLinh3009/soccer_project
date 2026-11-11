@@ -175,8 +175,9 @@ def clean(answer):
 class ElevenLabsLLM:
     """Text-only conversation with an ElevenLabs agent; the agent's LLM writes the lines."""
 
-    def __init__(self, api_key, llm, system_prompt, temperature, agent_id=None):
+    def __init__(self, api_key, llm, system_prompt, temperature, agent_id=None, agent_cache=AGENT_CACHE):
         self.key, self.llm, self.prompt, self.temperature = api_key, llm, system_prompt, temperature
+        self.cache = agent_cache
         self.agent_id = agent_id or self._agent()
         self.ws = None
 
@@ -198,14 +199,14 @@ class ElevenLabsLLM:
 
     def _agent(self):
         """Reuse the cached agent (its prompt/LLM updated to this run's), or create one."""
-        cached = json.load(open(AGENT_CACHE)) if os.path.exists(AGENT_CACHE) else {}
+        cached = json.load(open(self.cache)) if os.path.exists(self.cache) else {}
         if cached.get("agent_id"):
             self._http("PATCH", f"/v1/convai/agents/{cached['agent_id']}", self._config())
             return cached["agent_id"]
         agent_id = self._http("POST", "/v1/convai/agents/create", self._config())["agent_id"]
-        os.makedirs(os.path.dirname(AGENT_CACHE), exist_ok=True)
-        json.dump({"agent_id": agent_id}, open(AGENT_CACHE, "w"))
-        print(f"created ElevenLabs agent {agent_id} (cached in {AGENT_CACHE})")
+        os.makedirs(os.path.dirname(os.path.abspath(self.cache)), exist_ok=True)
+        json.dump({"agent_id": agent_id}, open(self.cache, "w"))
+        print(f"created ElevenLabs agent {agent_id} (cached in {self.cache})")
         return agent_id
 
     def _connect(self):
@@ -284,7 +285,7 @@ def main(args):
             raise SystemExit("set the ELEVENLABS_API_KEY environment variable first")
         language = "English" if args.language == "en" else f"Language: {args.language}"
         llm = ElevenLabsLLM(key, args.llm_model, SYSTEM_PROMPT.format(language=language), args.temperature,
-                            args.agent_id)
+                            args.agent_id, args.agent_cache)
         print(f"agent {llm.agent_id}, model {args.llm_model}")
 
     timeline = [{"half": h, "second": s, "gameTime": format_game_time(h, s), "flow": "yes", "source": source,
@@ -338,6 +339,7 @@ if __name__ == "__main__":
     p.add_argument("--llm_model", default="gemini-2.5-flash", help="LLM of the ElevenLabs agent")
     p.add_argument("--temperature", type=float, default=0.7)
     p.add_argument("--agent_id", default=None, help="use this existing agent instead of the cached/created one")
+    p.add_argument("--agent_cache", default=AGENT_CACHE, help="json file keeping the id of the created agent")
     p.add_argument("--language", default="en", help="language of the lines (en = English)")
     p.add_argument("--history", type=int, default=4, help="how many previous lines are shown to avoid repeats")
     p.add_argument("--out_dir", default=os.path.join("outputs", "no_flow"))

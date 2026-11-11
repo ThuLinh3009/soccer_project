@@ -3,6 +3,21 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.6 (2026-11-11)
+Test pipeline trên trận mới không có nhãn: video → luồng YES (model đã train) → khoảng trống → luồng NO (LLM ElevenLabs).
+- `colab_test_pipeline_v4.6.ipynb` (mới): chạy trên Colab cho các trận trong `MyDrive/soccer_project/video_test/`.
+  - Các bước: video 2 hiệp (`cut_halves.py`) → npy TimeSformer 768 chiều → phép ép đã học → npy 8576 chiều → `infer_match.py` (luồng YES) → `no_flow_llm.py --yes_events` (luồng NO) → timeline.
+  - API key ElevenLabs đọc từ Colab Secrets (`ELEVENLABS_API_KEY`), không dán vào cell. Không có key thì chạy chế độ template.
+  - npy 768 chiều và kết quả được lưu trên Drive (`video_test/features`, `video_test/output`).
+- `infer_match.py` (mới): chạy luồng YES (spotting + dense captioning) trên **thư mục trận bất kỳ**, không cần nhãn và không cần nằm trong danh sách SoccerNet.
+  - Dùng cùng checkpoint và cùng cách suy luận như `main.py` / `retune.py`: cửa sổ trượt 30 giây, NMS tham lam, mỗi sự kiện một câu GPT-2 từ clip 30 giây quanh nó.
+  - Ghi `results_spotting.json` và `results_dense_captioning.json` cùng định dạng với `main.py`.
+  - Lý do: `main.py` / `retune.py` chỉ chạy trên các trận có trong split SoccerNet và luôn chấm điểm bằng nhãn.
+  - Đã kiểm thử trên CPU với model ngẫu nhiên và feature giả: NMS, clip và JSON đúng định dạng, `no_flow_llm.py --yes_events` đọc được.
+- `feature_mapper.py apply`: thêm `--games` để áp phép ép cho các thư mục trận cho trước (trận mới), thay vì lấy theo split SoccerNet.
+- `no_flow_llm.py`: thêm `--agent_cache`, nơi lưu id agent ElevenLabs. Notebook lưu trên Drive để không tạo agent mới mỗi phiên Colab.
+- Các notebook khác: chỉ đổi số phiên bản thành v4.6.
+
 ## v4.5 (2026-11-11)
 - `no_flow_llm.py`: chạy thật với LLM ElevenLabs (agent text-only, `gemini-2.5-flash`) trên 2 trận test, sửa các lỗi phát hiện ra.
   - Sửa lỗi câu trả lời bị lệch một lượt: agent gửi câu trả lời 2 lần (từng mảnh `agent_chat_response_part` và cả câu `agent_response`). Bản cũ lấy bản ghép từ các mảnh, nên câu `agent_response` còn sót lại bị đọc thành câu trả lời của lượt sau, và mỗi câu xuất hiện 2 lần. Nay chỉ lấy `agent_response`; các mảnh chỉ dùng dự phòng khi không nhận được câu hoàn chỉnh.
