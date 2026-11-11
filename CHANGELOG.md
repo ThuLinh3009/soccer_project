@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.7 (2026-11-11)
+- Lần chạy đầu `colab_test_pipeline` trên Colab: luồng YES chạy được (Chelsea – Man City 37 sự kiện), nhưng luồng NO bị ElevenLabs trả **HTTP 401 Invalid API key**.
+- `colab_test_pipeline_v4.7.ipynb`, cell 8: kiểm tra key trước khi chạy luồng NO (gọi `GET /v1/convai/agents`). In mã trả về, độ dài key và 3 ký tự đầu (không in cả key). Key không hợp lệ thì dừng ngay với hướng dẫn sửa.
+- `no_flow_llm.py`: bỏ dấu cách, xuống dòng và dấu ngoặc thừa quanh key khi đọc `ELEVENLABS_API_KEY`.
+- Các notebook khác: chỉ đổi số phiên bản thành v4.7.
+
 ## v4.6 (2026-11-11)
 Test pipeline trên trận mới không có nhãn: video → luồng YES (model đã train) → khoảng trống → luồng NO (LLM ElevenLabs).
 - `colab_test_pipeline_v4.6.ipynb` (mới): chạy trên Colab cho các trận trong `MyDrive/soccer_project/video_test/`.

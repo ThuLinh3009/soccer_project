@@ -280,7 +280,7 @@ def main(args):
 
     llm = None
     if args.llm == "elevenlabs":
-        key = os.environ.get("ELEVENLABS_API_KEY")
+        key = (os.environ.get("ELEVENLABS_API_KEY") or "").strip().strip("\"'").strip()  # pasted with spaces/quotes
         if not key:
             raise SystemExit("set the ELEVENLABS_API_KEY environment variable first")
         language = "English" if args.language == "en" else f"Language: {args.language}"
