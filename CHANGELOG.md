@@ -3,6 +3,35 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.0 (2026-11-12)
+Luồng NO **v2** (kịch bản 2.0 + Gemini) và **giọng đọc** (Gemini TTS). Đây là các file mới; code cũ giữ nguyên (`no_flow_llm.py` với ElevenLabs, cell 8–9 của notebook test vẫn chạy được).
+
+- `script_v2.py` (mới): kịch bản 2.0 của `NO_FLOW_SCRIPT.md` cho mọi trận.
+  - Tính biến từ metadata FIFA: loại trận (league / group / knockout / final), vòng sau, tỉ số, đội dẫn, người ghi bàn, phong độ, đối đầu, đội trưởng...
+  - Khuôn câu có điều kiện; ưu tiên biến thể đúng loại trận và đúng tỉ số; bỏ khuôn thiếu biến.
+  - Xếp lịch:
+    - câu bắt buộc: chào mừng, 2 đội + HLV, ý nghĩa trận, tin nóng (bàn, thẻ, thay người, phạt đền, VAR, nghỉ uống nước), nhắc tỉ số mỗi ~10 phút, hết hiệp 1, đầu hiệp 2, phút 80', bù giờ, hết trận;
+    - thông tin nền (mỗi chủ đề một lần mỗi trận) trong khoảng trống ≥ 2 phút.
+  - Câu bắt buộc trùng câu YES thì lùi lại; không có chỗ thì giữ giờ và tắt câu YES bị đè (`muted`).
+  - Câu YES bỏ `[PLAYER]` / `[TEAM]` ("the player", "the team") để đọc thành tiếng.
+- `no_flow_v2.py` (mới): Gemini nói lại từng câu của kịch bản.
+  - Kiểm tra: số không có trong tin nhắn, tên lạ, quá dài, từ cấm (giờ trong ngày, thời tiết, khen chê). Lỗi thì dùng khuôn câu.
+  - Các khoảnh khắc chia nhiều câu (mở đầu, hết hiệp 1, hết trận): mỗi câu chỉ nói phần của nó (quy tắc 10 trong prompt).
+- `tts_v2.py` (mới): Gemini TTS.
+  - 2 giọng: Puck đọc câu sự kiện, Charon dẫn chương trình; bàn thắng đọc giọng hào hứng.
+  - Mỗi câu thành một wav (cache), đặt đúng thời điểm, ghép audio từng hiệp, lồng vào video bằng ffmpeg.
+- `gemini_client.py` (mới): gọi Gemini bằng REST, không cần SDK.
+  - Key đọc từ biến môi trường `GEMINI_API_KEY`, không ghi vào file.
+  - Model TTS 2.5 dùng `generateContent`; model TTS mới (3.x) dùng Interactions API (với `generateContent`, model 3.x đọc cả câu chỉ dẫn giọng thành tiếng).
+  - Danh sách model thử lần lượt: model trước hết quota thì chuyển sang model sau.
+  - `python gemini_client.py --check`: kiểm tra key, liệt kê model, thử viết câu và đọc giọng.
+- Model:
+  - Không có model TTS "gemini-2.5-flash-lite". Model TTS Flash-Lite là `gemini-3.8-flash-lite-tts` (mặc định), dự phòng `gemini-2.5-flash-preview-tts`, `gemini-3.1-flash-tts-preview`.
+  - Viết câu: `gemini-2.5-flash-lite` → `gemini-3.1-flash-lite` → `gemini-3.5-flash-lite`. Gói miễn phí của `gemini-2.5-flash-lite` chỉ cho 20 lượt gọi, không đủ một trận.
+- Chạy thử trận Chelsea – Man City (sự kiện FIFA thay cho YES): 36 câu NO, 33 câu Gemini viết, 3 câu dùng khuôn vì quá dài. TTS 6 câu đầu và ghép audio hiệp 1 chạy được.
+- `colab_test_pipeline_v5.0.ipynb`: thêm cell 10 (luồng NO v2) và cell 11 (giọng đọc + video), cần secret `GEMINI_API_KEY`.
+- `NO_FLOW_SCRIPT.md`: thêm quy tắc 10 (mỗi câu chỉ nói phần của nó), mục 7 trỏ tới code mới. `HUONG_DAN.md`: hướng dẫn v2.
+
 ## v4.15 (2026-11-12)
 - `NO_FLOW_SCRIPT.md` viết lại thành **kịch bản 2.0, dùng chung cho mọi trận** (bản 1.0 gắn với trận Brazil – Norway).
   - Mục 1: danh sách biến `{...}` lấy từ metadata FIFA (`match_info`, `staff`, `lineups`, `form`, `head_to_head`, `standings_before`, `events`) và các biến code tính sẵn (`{round_phrase}`, `{next_stage}`, `{score}`, `{leader}`, `{scorers}`...). Thiếu biến thì bỏ khuôn đó.

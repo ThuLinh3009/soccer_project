@@ -164,6 +164,8 @@ Notebook: **`colab_test_pipeline_vX.Y.ipynb`**.
 | 7 | **Luồng YES** (`infer_match.py`) | Ra `output/yes/<trận>/results_dense_captioning.json` |
 | 8 | **Luồng NO** (`no_flow_llm.py`) | Kiểm tra key trước, rồi gọi LLM cho các trận trong `NO_FLOW_GAMES` |
 | 9 | Xem timeline | `[EVENT]` = YES, `[INFO ]` = NO |
+| **10** | **Luồng NO v2** (`no_flow_v2.py`, kịch bản 2.0 + Gemini) | Thay cho cell 8–9. Cần secret `GEMINI_API_KEY` |
+| **11** | **Giọng đọc** (`tts_v2.py`, Gemini TTS) | 2 giọng, ghép thành `audio/1_commentary.mp4`, `2_commentary.mp4` |
 
 **Cấu hình chính ở cell 2:**
 - `MODEL_NAME`, `MAPPER_FILE`: cặp model + phép ép đã train (phải đi cùng nhau).
@@ -184,6 +186,32 @@ python no_flow_llm.py --metadata "..\video_test\metadata\<trận>" --video_dir "
     --yes_events "<đường dẫn>\results_dense_captioning.json" --out_dir ..\video_test\output_no_flow
 ```
 Thêm `--llm template` để chạy thử không tốn credit.
+
+### Luồng NO v2 + giọng đọc (Gemini)
+Bản mới, chạy song song với bản ElevenLabs (code cũ giữ nguyên):
+
+| File | Vai trò |
+|---|---|
+| `script_v2.py` | Kịch bản 2.0 (`NO_FLOW_SCRIPT.md`): biến từ metadata, khuôn câu, xếp lịch câu bắt buộc + thông tin nền |
+| `no_flow_v2.py` | Gemini nói lại từng câu của kịch bản; kiểm tra số, tên, độ dài, từ cấm; lỗi thì dùng khuôn câu |
+| `tts_v2.py` | Gemini TTS: mỗi câu thành wav (có cache), ghép theo thời điểm thành audio từng hiệp, lồng vào video |
+| `gemini_client.py` | Gọi Gemini bằng REST (không cần SDK). `python gemini_client.py --check`: kiểm tra key, liệt kê model |
+
+Model mặc định (danh sách thử lần lượt: model trước **hết quota** thì tự chuyển sang model sau):
+- Viết câu: `gemini-2.5-flash-lite` → `gemini-3.1-flash-lite` → `gemini-3.5-flash-lite`. Gói miễn phí của `gemini-2.5-flash-lite` chỉ cho **20 lượt gọi**; một trận cần khoảng 40–60 câu NO.
+- Giọng đọc: `gemini-3.8-flash-lite-tts`. Không có bản TTS tên "gemini-2.5-flash-lite"; các model TTS mà key dùng được: `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts`, `gemini-3.1-flash-tts-preview`, `gemini-3.8-flash-lite-tts`, `gemini-3.8-flash-tts`.
+
+Chạy trên máy local:
+```powershell
+$env:GEMINI_API_KEY = "<key>"      # chỉ tồn tại trong cửa sổ PowerShell này
+python no_flow_v2.py --metadata "..\video_test\metadata\<trận>" --video_dir "..\video_test\<giải>\<mùa>\<trận>" `
+    --yes_events "<đường dẫn>\results_dense_captioning.json" --out_dir ..\video_test\output_v2
+python tts_v2.py --timeline "..\video_test\output_v2\<trận>\commentary_timeline.json" `
+    --video_dir "..\video_test\<giải>\<mùa>\<trận>" --max_lines 30
+```
+- `no_flow_v2.py --llm template`: chỉ dùng khuôn câu, không gọi Gemini.
+- `tts_v2.py --max_lines 30`: chỉ đọc 30 câu đầu để thử. `--only no`: chỉ đọc câu luồng NO.
+- Lồng vào video cần `ffmpeg` (Colab có sẵn).
 
 ---
 
@@ -212,7 +240,9 @@ LLM chạy qua **ElevenLabs Agents** ở chế độ chỉ văn bản (WebSocket
 | `infer_match.py` | Luồng YES trên trận mới, không cần nhãn |
 | `cut_halves.py` | Cắt video full trận thành 2 hiệp |
 | `fifa_crawl.py` | Crawl metadata FIFA → CSV + `facts.csv` |
-| `no_flow_llm.py` | Luồng NO với LLM ElevenLabs |
+| `no_flow_llm.py` | Luồng NO v1 với LLM ElevenLabs |
+| `script_v2.py`, `no_flow_v2.py`, `tts_v2.py`, `gemini_client.py` | Luồng NO v2 (kịch bản 2.0 + Gemini) và giọng đọc Gemini TTS |
+| `NO_FLOW_SCRIPT.md` | Kịch bản bình luận 2.0 và system prompt |
 | `commentary_timeline.py`, `match_facts.py`, `football_data.py` | Xếp lịch câu nền; luồng NO cũ dùng câu mẫu từ metadata SoccerNet |
 | `colab_video2caption_vX.Y.ipynb` | Notebook train (giai đoạn 1) |
 | `colab_test_pipeline_vX.Y.ipynb` | Notebook test pipeline (giai đoạn 3) |
@@ -226,10 +256,12 @@ LLM chạy qua **ElevenLabs Agents** ở chế độ chỉ văn bản (WebSocket
 | Lỗi | Nguyên nhân và cách sửa |
 |---|---|
 | `HTTP 401 Invalid API key` | Key sai, đã xoá, hoặc dán thiếu. Tạo key mới, dán lại vào secret `ELEVENLABS_API_KEY`, bật quyền truy cập |
+| Gemini `HTTP 429` / `RESOURCE_EXHAUSTED` | Chạm giới hạn miễn phí (số lần gọi mỗi phút / mỗi ngày). Code tự chờ rồi thử lại; hết quota ngày thì `tts_v2.py` dừng và giữ các câu đã đọc, hôm sau chạy tiếp. Giảm `--rpm` hoặc `TTS_MAX_LINES` |
+| Gemini `HTTP 404 ... is not found` | Sai tên model. Chạy `python gemini_client.py --check` để xem các model key dùng được |
 | `This request exceeds your quota limit` | Hết credit ElevenLabs hoặc chạm hạn mức của key. Xem trang Usage; giảm số trận bằng `NO_FLOW_GAMES` |
 | `⚠️ không đọc được secret` | Chưa tạo secret hoặc chưa bật quyền truy cập cho notebook |
 | Luồng YES bắt được ít sự kiện | Hạ `NMS_THRESHOLD` xuống 0.3 rồi chạy lại cell 7. Video mới khác dữ liệu train (năm, đồ hoạ, bóng đá nữ) nên model kém tự tin hơn |
-| Câu YES có `[PLAYER]`, `[TEAM]` | Model được train trên câu đã ẩn tên; chưa có bước điền tên |
+| Câu YES có `[PLAYER]`, `[TEAM]` | Model được train trên câu đã ẩn tên. Bản v2 đổi thành "the player", "the team" trước khi đọc thành tiếng |
 | Cell 3 báo thiếu hiệp hoặc metadata | Kiểm tra tên file `1_224p.mp4` / `2_224p.mp4` và tên thư mục metadata trùng tên thư mục trận |
 | Excel hiện sai dấu trong CSV | Mở bằng Data → From Text/CSV, chọn UTF-8 |
 | `cut_halves.py` báo WARNING | Hiệp ngắn hơn 44 phút: kiểm tra lại `t1`, `t2` và độ dài video |

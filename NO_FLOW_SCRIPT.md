@@ -1,6 +1,6 @@
 # Kịch bản bình luận chung cho luồng NO (dùng cho mọi trận)
 
-> **Kịch bản 2.0** (2026-11-12). Bộ khuôn câu dùng chung cho **mọi trận đấu**. Mỗi câu có các chỗ trống `{biến}`. Code điền tự động từ metadata FIFA (`match_info.csv`, `staff.csv`, `events.csv`, `standings_before.csv`, `form.csv`, `lineups.csv`).
+> **Kịch bản 2.0** (2026-11-12), đã đưa vào code ở v5.0 (`script_v2.py`, `no_flow_v2.py`). Bộ khuôn câu dùng chung cho **mọi trận đấu**. Mỗi câu có các chỗ trống `{biến}`. Code điền tự động từ metadata FIFA (`match_info.csv`, `staff.csv`, `events.csv`, `standings_before.csv`, `form.csv`, `lineups.csv`).
 > Mỗi câu bắt buộc có nhiều **biến thể** theo loại trận (giải VĐQG / vòng bảng / knock-out / chung kết) và theo tỉ số (hoà / dẫn 1 bàn / dẫn nhiều bàn).
 > Khuôn câu được dùng theo 2 cách:
 > 1. **Câu dự phòng:** khi LLM lỗi, code dùng thẳng khuôn đã điền biến.
@@ -313,6 +313,9 @@ Hard rules:
    Opinions are not: never judge players, tactics, the referee or who deserves to win.
 8. GENDER women: players are she/her. GENDER men: he/him.
 9. No quotes, emojis, markdown, hashtags, stage directions or speaker names.
+10. Say only what the FACT is about. Some moments are split into several lines said one after the other
+   (score, scorers, invitation, result, goodbye): never add the content of another line, e.g. no goodbye
+   and no invitation unless the FACT says it.
 
 Phase rules:
 - welcome: greet the viewers ("Hello and welcome"), name the stadium, the city, the competition,
@@ -323,14 +326,14 @@ Phase rules:
   Goal: excited, with the scorer and the new SCORE. Cards and substitutions: neutral and short.
 - score_update: remind the score in a fresh way, short.
 - background: one piece of background from the FACT, calm tone.
-- half_time: the half-time whistle. Give the SCORE and the SCORERS if any, then invite the viewers
-  to stay for the second half.
+- half_time: one part of the half-time moment, the one in the FACT: the whistle and the score,
+  or the scorers, or the invitation to stay for the second half.
 - second_half: the second half is under way. Remind the SCORE.
 - late_game: about ten minutes left, or stoppage time has begun. Build tension with the SCORE.
 - extra_time: the match goes to extra time, or extra time is under way. Give the SCORE.
 - penalties: the match goes to penalties, or the shoot-out is over. Use only the FACT.
-- full_time: the final whistle. Give the final SCORE, the SCORERS, what the result means
-  (NEXT ROUND or POINTS), then say goodbye to the viewers.
+- full_time: one part of the full-time moment, the one in the FACT: the final whistle and the score,
+  or the scorers, or what the result means, or the goodbye.
 ```
 
 ---
@@ -372,12 +375,13 @@ YOUR LINE:
 
 ---
 
-## 7. Triển khai vào code (sau khi duyệt)
+## 7. Code (v5.0, file mới; code cũ giữ nguyên)
 
 | File | Việc làm |
 |---|---|
-| `match_facts.py` | Tính các biến ở mục 1; lưu các khuôn câu ở mục 2 (có điều kiện); chọn biến thể; bỏ khuôn thiếu biến |
-| `commentary_timeline.py` | Đặt các câu bắt buộc (A, B2, C, D, F, G, H, I) vào lịch trước, rồi mới rải câu tuỳ chọn. Áp quy tắc mục 3 |
-| `no_flow_llm.py` | Thay `SYSTEM_PROMPT` bằng mục 4, tạo tin nhắn theo mục 5, kiểm tra câu theo mục 3.7 |
+| `script_v2.py` | Biến ở mục 1, khuôn câu ở mục 2 (có điều kiện, chọn biến thể, bỏ khuôn thiếu biến), xếp lịch theo mục 3 |
+| `no_flow_v2.py` | System prompt mục 4, tin nhắn mục 5, kiểm tra câu theo mục 3.7. LLM: Gemini |
+| `tts_v2.py` | Đọc thành giọng (Gemini TTS), 2 giọng, ghép audio từng hiệp, lồng vào video |
+| `gemini_client.py` | Gọi Gemini (REST); tự chuyển model khi model trước hết quota |
 
-Chạy thử `--llm template` (chỉ dùng khuôn câu, không tốn credit) trên 2 trận, kiểm tra lịch câu, rồi mới chạy `--llm elevenlabs`.
+Chưa làm: hiệp phụ sau H1 và luân lưu (giai đoạn I), vì video chỉ có 2 hiệp chính.
