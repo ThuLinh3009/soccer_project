@@ -3,6 +3,23 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.12 (2026-11-12)
+- Kết quả trên 2 trận mới (luồng YES):
+
+  | Trận | NMS 0.5 | NMS 0.4 | NMS 0.3 |
+  |---|---|---|---|
+  | Chelsea – Man City | 37 | 75 | 118 |
+  | Brazil – Norway | 58 | 103 | 158 |
+
+  Nhãn SoccerNet trung bình khoảng 85 sự kiện mỗi trận.
+- `eval_vs_fifa.py` (mới): recall của luồng YES trên trận mới, so với `events.csv` của FIFA (bàn, dứt điểm, phạt góc, phạm lỗi, việt vị, thẻ, thay người).
+  - FIFA chỉ ghi tới phút, nên sự kiện được tính là bắt được nếu có sự kiện YES trong phút đó (±15 giây).
+  - In thêm mức **ngẫu nhiên** (cùng số sự kiện đặt ngẫu nhiên, trung bình 200 lần). Cửa sổ khớp rộng nên ngẫu nhiên cũng đạt recall cao; model chỉ tốt khi vượt xa mức này.
+  - "FIFA overlap" là mức thấp nhất của precision, không phải precision (FIFA không ghi mọi pha bóng).
+- `infer_match.py`: thêm `--no_caption` (chỉ bắt sự kiện, không sinh câu).
+- `colab_test_pipeline_v4.12.ipynb`: thêm cell 7b, chạy NMS 0.3 / 0.4 / 0.5 rồi tính recall so với FIFA cho từng trận. Kết quả lưu ở `output/yes_nms<ngưỡng>/` và `output/recall_vs_fifa.csv`, không ghi đè `output/yes`.
+- `colab_video2caption_v4.12.ipynb`: `RETUNE_NMS = ["0.3", "0.4", "0.5"]`, `FIXED_NMS = 0.4`. Cell 12 chấm trên test cả 3 ngưỡng và in bảng so sánh Recall_loose / Precision_loose.
+
 ## v4.11 (2026-11-12)
 - Đổi ngưỡng NMS mặc định từ 0.5 xuống **0.3**. Trên valid của `gpt2-video60-mlp`, recall_loose tăng từ 0,61 lên 0,86 (precision_loose giảm từ 0,76 xuống 0,71).
 - NMS chỉ dùng lúc suy luận (chọn đỉnh sự kiện sau khi model chấm điểm). Lúc train, model được chọn theo loss, nên **đổi NMS không cần train lại**.

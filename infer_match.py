@@ -69,6 +69,10 @@ def run_game(game_dir, args, spot_model, cap_model, inv_dict):
     os.makedirs(out, exist_ok=True)
     spotting = {"UrlLocal": game_dir, "predictions": [{k: v for k, v in p.items() if k != "_frame"} for p in preds]}
     json.dump(spotting, open(os.path.join(out, "results_spotting.json"), "w"), indent=4)
+    if args.no_caption:
+        print(f"{name}: {len(preds)} events ({sum(p['half'] == '1' for p in preds)} / "
+              f"{sum(p['half'] == '2' for p in preds)} per half), spotting only -> {out}")
+        return
 
     # one caption per spot, from the clip centred on it (same clips as dataset.PredictionCaptions)
     video = SoccerNetVideoProcessor(clip_length)
@@ -95,8 +99,9 @@ def main(args):
     print(f"features {args.features}: {args.feature_dim} dims | model {args.model_name} | "
           f"NMS {args.nms_threshold} | top_k {args.top_k}")
     spot_model = load_spotting(args, Namespace(dict_event=dict_event)).eval()
-    cap_model = load_caption(args, vocab_size=50257).eval()
-    cap_model.top_k = args.top_k
+    cap_model = None if args.no_caption else load_caption(args, vocab_size=50257).eval()
+    if cap_model is not None:
+        cap_model.top_k = args.top_k
     for game_dir in args.game_dirs:
         run_game(game_dir, args, spot_model, cap_model, inv_dict)
 
@@ -117,4 +122,5 @@ if __name__ == "__main__":
     p.add_argument("--num_layers", type=int, default=2)
     p.add_argument("--gpt_type", default="gpt2")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--no_caption", action="store_true", help="spotting only (results_spotting.json), e.g. for eval_vs_fifa.py")
     main(p.parse_args())
