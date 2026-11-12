@@ -3,6 +3,9 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.4 (2026-11-12)
+- Notebook test, cell 12: bỏ tuỳ chọn `-q` của lệnh `spacy download` (spaCy 3.8 hiểu `-q` là tên gói và báo lỗi "No compatible package found for '-q'").
+
 ## v5.3 (2026-11-12)
 Sửa cell 12 của notebook test: Colab dùng Python 3.13 nên `pip install kokoro` lỗi (Kokoro cần Python 3.10–3.12).
 
