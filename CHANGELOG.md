@@ -3,6 +3,14 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.15 (2026-11-12)
+- `NO_FLOW_SCRIPT.md` viết lại thành **kịch bản 2.0, dùng chung cho mọi trận** (bản 1.0 gắn với trận Brazil – Norway).
+  - Mục 1: danh sách biến `{...}` lấy từ metadata FIFA (`match_info`, `staff`, `lineups`, `form`, `head_to_head`, `standings_before`, `events`) và các biến code tính sẵn (`{round_phrase}`, `{next_stage}`, `{score}`, `{leader}`, `{scorers}`...). Thiếu biến thì bỏ khuôn đó.
+  - Mục 2: khuôn câu cho từng giai đoạn, có biến thể theo loại trận (league / group / knockout / final) và theo tỉ số (0-0 / hoà / dẫn 1 bàn / dẫn nhiều bàn).
+  - Mục 4–5: system prompt và khuôn tin nhắn chung. Mục 6: cùng khuôn điền cho 2 trận (WSL và World Cup).
+  - Chưa đưa vào code: chờ duyệt.
+- Các notebook: chỉ đổi số phiên bản thành v4.15.
+
 ## v4.14 (2026-11-12)
 - **Chốt NMS 0.4** cho luồng YES. Đổi NMS không cần train lại (dùng nguyên weight `gpt2-video60-mlp`).
   - Test (10 trận): Recall_loose 0,777, Precision_loose 0,753, 1128 sự kiện (~113 mỗi trận), a_mAP_loose 0,395.

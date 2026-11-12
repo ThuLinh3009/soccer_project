@@ -1,70 +1,291 @@
-# Kịch bản bình luận và system prompt cho luồng NO
+# Kịch bản bình luận chung cho luồng NO (dùng cho mọi trận)
 
-> **Phiên bản kịch bản 1.0** (2026-11-12). Bản chốt để triển khai vào `no_flow_llm.py` và bộ xếp lịch (`commentary_timeline.py`).
-> Các lựa chọn đã chốt mặc định ở **mục 0**. Muốn đổi thì sửa mục 0, các mục sau đổi theo.
+> **Kịch bản 2.0** (2026-11-12). Bộ khuôn câu dùng chung cho **mọi trận đấu**. Mỗi câu có các chỗ trống `{biến}`. Code điền tự động từ metadata FIFA (`match_info.csv`, `staff.csv`, `events.csv`, `standings_before.csv`, `form.csv`, `lineups.csv`).
+> Mỗi câu bắt buộc có nhiều **biến thể** theo loại trận (giải VĐQG / vòng bảng / knock-out / chung kết) và theo tỉ số (hoà / dẫn 1 bàn / dẫn nhiều bàn).
+> Khuôn câu được dùng theo 2 cách:
+> 1. **Câu dự phòng:** khi LLM lỗi, code dùng thẳng khuôn đã điền biến.
+> 2. **Gợi ý cho LLM:** khuôn đã điền biến được gửi trong trường `FACT`, LLM nói lại tự nhiên hơn và không lặp từng chữ.
 
 ---
 
 ## 0. Các lựa chọn đã chốt
 
-| # | Câu hỏi | Chốt | Lý do |
+| # | Câu hỏi | Chốt |
+|---|---|---|
+| 1 | Ngôn ngữ | Tiếng Anh (khớp luồng YES). Muốn tiếng Việt thì dịch các khuôn ở mục 2 và đổi dòng `Language` trong prompt |
+| 2 | Chào theo giờ ("Good evening") | Không. Dùng "Hello and welcome" (giờ địa phương trong dữ liệu FIFA không chắc đúng) |
+| 3 | Cảm xúc / nhận xét | Có cảm xúc (bàn thắng, cuối trận), không nhận xét (khen chê cầu thủ, trọng tài, "xứng đáng") |
+| 4 | Câu cầu thủ | Gộp 3–4 cầu thủ một câu, tối đa 2 câu mỗi hiệp |
+| 5 | Giới tính | `competition` có chữ "Women" thì cầu thủ là she/her |
+
+---
+
+## 1. Biến (code điền từ metadata)
+
+### 1.1. Biến lấy thẳng từ file
+
+| Biến | Nguồn | Ví dụ (WSL) | Ví dụ (World Cup) |
 |---|---|---|---|
-| 1 | Ngôn ngữ | **Tiếng Anh** | Khớp câu của luồng YES (SoccerNet tiếng Anh) và giọng TTS. Đổi sang tiếng Việt: sửa dòng `Language` trong prompt |
-| 2 | Lời chào theo giờ ("Good evening") | **Không**, dùng "Hello and welcome" | `date_local` của FIFA không chắc đúng múi giờ (Brazil – Norway ghi 16:00 nhưng có `Z`). Nói sai giờ thì người xem nhận ra ngay |
-| 3 | Nhận xét, cảm xúc | **Cảm xúc có, nhận xét không** | Được: hào hứng khi có bàn thắng, căng thẳng cuối trận dựa trên tỉ số. Cấm: khen chê cầu thủ, chiến thuật, "đáng lẽ", "xứng đáng" |
-| 4 | Câu số áo ("X wears number N") | **Bỏ từng câu riêng.** Gộp 3–4 cầu thủ một câu, tối đa 2 câu mỗi hiệp | Trước đây có tới 22 câu số áo mỗi trận, nghe như đọc danh sách |
-| 5 | Hiệp phụ, luân lưu, nghỉ uống nước, VAR | **Có**, xem giai đoạn H, I và mục 1.3 | `events.csv` có `Delay` (nghỉ uống nước), `VAR`; trận knock-out có thể có hiệp phụ |
-| 6 | Giới tính | Lấy từ `competition`: có chữ "Women" thì **she/her** | Trận Chelsea – Man City (WSL) là bóng đá nữ |
+| `{competition}` | `match_info.competition` (bỏ ký hiệu ™) | Women's Super League | FIFA World Cup |
+| `{season}` | `match_info.season` | Women's Super League 2025/2026 | FIFA World Cup 2026 |
+| `{stage}` | `match_info.stage` | Regular Season | Round of 16 |
+| `{group}` | `match_info.group` | (trống) | (trống) |
+| `{matchday}` | `match_info.matchday` | 1 | (trống) |
+| `{stadium}` | `match_info.stadium` | Stamford Bridge | New York/New Jersey Stadium |
+| `{city}` | `match_info.city` | London | New Jersey |
+| `{attendance}` | `match_info.attendance`, có dấu phẩy nghìn | 14,182 | 80,663 |
+| `{capacity}` | `match_info.capacity` | 40,044 | (trống) |
+| `{stadium_built}` | `match_info.stadium_built` | 1877 | (trống) |
+| `{referee}` | `match_info.referee` | Emily Heaslip | Ismail Elfath |
+| `{home_team}`, `{away_team}` | `match_info.home_team`, `away_team` | Chelsea, Manchester City | Brazil, Norway |
+| `{home_tactics}`, `{away_tactics}` | `match_info.home_tactics`, `away_tactics` | 3-4-2-1, 4-2-3-1 | 4-1-2-3, 4-1-2-3 |
+| `{home_coach}`, `{away_coach}` | `staff.csv`, `role = head_coach` | Sonia Bompastor, Andrée Alexander Jeglertz | Carlo Ancelotti, Ståle Solbakken |
+| `{home_captain}`, `{away_captain}` | `lineups.csv`, `captain = True` | Millie Bright, … | Marquinhos, Martin Odegaard |
+
+### 1.2. Biến code tính sẵn
+
+| Biến | Cách tính | Ví dụ |
+|---|---|---|
+| `{matchday_word}` | `matchday` viết bằng chữ: 1 → one, 2 → two, … 38 → thirty-eight | one |
+| `{round_phrase}` | Có `matchday` → "matchday {matchday_word}"; có `group` → "Group {group}"; còn lại → `{stage}` | matchday one / Group C / Round of 16 |
+| `{match_kind}` | `league` (có matchday), `group` (có group), `final` (stage = Final), `knockout` (còn lại) | league / knockout |
+| `{next_stage}` | Vòng sau của `{stage}`: Round of 32 → Round of 16 → quarter-finals → semi-finals → Final | quarter-finals |
+| `{minute}` | Theo kiểu FIFA: phút 1–45, 45'+x, 46–90, 90'+x | 79', 45'+7' |
+| `{home_goals}`, `{away_goals}` | Đếm bàn thắng trong `events.csv` tới thời điểm câu được nói | 0, 1 |
+| `{score}` | "{home_team} {home_goals}, {away_team} {away_goals}" | Brazil 0, Norway 1 |
+| `{leader}`, `{trailer}` | Đội đang dẫn / đang bị dẫn (trống nếu hoà) | Norway, Brazil |
+| `{lead_score}` | "{bàn đội dẫn}-{bàn đội bị dẫn}" | 1-0 |
+| `{margin}` | Cách biệt bàn thắng | 1 |
+| `{ht_score}` | Tỉ số hết hiệp 1, dạng `{score}` | Chelsea 1, Manchester City 0 |
+| `{scorers}` | Danh sách người ghi bàn: "Name minute' (team)", gộp người ghi 2 bàn, ghi chú "pen" / "og" | Erling Haaland 79', 90' (Norway); Neymar Jr 90'+10' pen (Brazil) |
+| `{winner}`, `{loser}` | Theo tỉ số cuối (hoặc luân lưu) | Norway, Brazil |
+| `{home_form}` | 5 trận gần nhất từ `form.csv`, ví dụ "W D W W W" | W D W W W |
+| `{home_wins_last5}` | Số trận thắng trong 5 trận gần nhất | 4 |
+| `{home_position}`, `{home_points}` | `standings_before.csv` (hạng viết dạng thứ tự: 1st, 2nd…) | 3rd, 7 |
+| `{h2h_count}`, `{h2h_home_wins}`, `{h2h_away_wins}`, `{h2h_draws}` | `head_to_head.csv` | 12, 8, 2, 2 |
+| `{pronoun}` | he / she theo giới tính | she |
+
+**Quy tắc khi thiếu dữ liệu:** khuôn câu nào cần biến bị trống thì **bỏ khuôn đó** và dùng biến thể khác hoặc bỏ câu. Không bao giờ nói "unknown" hay để trống. Ví dụ không có `{city}` thì dùng biến thể không có thành phố. Không có HLV thì A2 dùng biến thể không có HLV.
 
 ---
 
-## 1. Kịch bản theo giai đoạn
+## 2. Khuôn câu theo giai đoạn
 
-Mỗi giai đoạn có **câu bắt buộc** (luôn nói, đúng thứ tự) và **câu tuỳ chọn** (chỉ nói khi còn khoảng trống).
-Mốc thời gian lấy từ `events.csv` của FIFA (`Start Time`, `End Time`, `Delay`...) và mp4 của từng hiệp.
+Mỗi mục ghi rõ **khi nào nói** và **điều kiện chọn biến thể**. Có nhiều biến thể cùng điều kiện thì code chọn ngẫu nhiên (cố định theo `seed`) để các trận không nghe giống hệt nhau.
 
-### 1.1. Bảng giai đoạn
+### A. Mở đầu trận (bắt buộc, từ giây 5 của hiệp 1, theo thứ tự A1 → A2 → A3)
 
-| # | Giai đoạn (`PHASE`) | Khi nào | Câu bắt buộc (theo thứ tự) | Câu tuỳ chọn | Dữ liệu |
-|---|---|---|---|---|---|
-| A | `welcome`, `teams`, `stakes` | Từ giây 5 hiệp 1, trước sự kiện YES đầu tiên. Không đủ chỗ thì chen vào khoảng trống trong 5 phút đầu | **A1** Chào mừng: giải, vòng / vòng đấu, sân, thành phố<br>**A2** Hai đội + hai HLV (đội nhà trước)<br>**A3** Ý nghĩa trận đấu | Phong độ 5 trận, sơ đồ, đội trưởng, trọng tài, khán giả | `match_info`, `staff`, `facts` (intro, coaches, form...) |
-| B | `live_news`, `score_update`, `background` | Hiệp 1, các khoảng trống giữa sự kiện YES | **B1** Tin nóng: bàn thắng, thẻ, thay người, phạt đền, VAR (≤ 30 giây sau khi xảy ra)<br>**B2** Nhắc tỉ số khoảng mỗi 10 phút | Đội hình, ghế dự bị, cầu thủ (gộp), khán giả | `events`, `facts` |
-| C | `half_time` | Tại `End Time` hiệp 1 (ví dụ 45'+7') | **C1** Còi hết hiệp 1 + **tỉ số hiệp 1** + người ghi bàn (nếu có)<br>**C2** Mời khán giả ở lại xem hiệp 2 | (không) | `events`, `match_info.half_time_score` |
-| D | `second_half` | Giây 5 của hiệp 2 | **D1** Hiệp 2 bắt đầu + nhắc tỉ số<br>**D2** Thay người trong giờ nghỉ (nếu có) | Đội nào cần gì (đang thua / đang hoà) | `events` |
-| E | như B | Hiệp 2, các khoảng trống | như B1, B2 | như B, ưu tiên thông tin chưa nói ở hiệp 1 | như B |
-| F | `late_game` | Phút 80' và khi vào bù giờ (phút 90') | **F1** Phút 80': "còn khoảng 10 phút" + tỉ số<br>**F2** Phút 90': đã vào bù giờ + tỉ số | (không) | `events` |
-| G | `full_time` | Tại `End Time` hiệp 2 (hoặc hiệp phụ / luân lưu nếu có) | **G1** Còi kết thúc + **tỉ số chung cuộc**<br>**G2** Người ghi bàn cả trận<br>**G3** Ý nghĩa kết quả: đội đi tiếp (knock-out) hoặc 3 điểm / chia điểm (giải VĐQG)<br>**G4** Chào tạm biệt | (không) | `events`, `match_info.stage` |
-| H | `extra_time` | Nếu có hiệp phụ: đầu hiệp phụ 1 và 2 | **H1** Hai đội phải đá hiệp phụ + tỉ số | (không) | `events` (half 3, 4) |
-| I | `penalties` | Nếu có luân lưu: trước và sau loạt sút | **I1** Trận đấu phân định bằng luân lưu<br>**I2** Kết quả luân lưu + đội đi tiếp | (không) | `match_info.home_penalties` / `away_penalties` |
+**A1. Chào mừng**
 
-### 1.2. Quy tắc xếp lịch (code đảm bảo, không phải LLM)
-
-1. **Câu bắt buộc luôn được nói.** Nếu trùng sự kiện YES thì lùi sang khoảng trống gần nhất, không bỏ.
-2. **Tin nóng** (bàn, thẻ, thay người, phạt đền) được nói **trong vòng 30 giây** sau thời điểm FIFA ghi. Nhiều tin cùng lúc thì gộp một câu.
-3. **Khoảng cách tối thiểu:** cách sự kiện YES phía trước 15 giây, cách sự kiện YES phía sau 10 giây, cách câu NO trước 45 giây.
-4. **Không quá 2 câu liên tiếp cùng chủ đề** (ví dụ 2 câu đội hình liền nhau thì câu thứ 3 phải đổi chủ đề).
-5. **Nhắc tỉ số:** khoảng mỗi 10 phút. Không nhắc lại nếu 3 phút trước vừa nói tỉ số.
-6. **Chuyện bên lề** (khán giả, ghế dự bị, cầu thủ) chỉ nói trong khoảng trống ≥ 2 phút, và không nói trong 2 phút sau bàn thắng.
-7. **Câu cầu thủ:** gộp 3–4 cầu thủ một câu, tối đa 2 câu mỗi hiệp.
-8. **Kiểm tra câu LLM** trước khi dùng. Câu bị loại thì dùng **câu dự phòng** ở mục 4:
-   - có con số không có trong tin nhắn (sai tỉ số, sai phút);
-   - có tên người không có trong tin nhắn;
-   - vượt giới hạn số từ;
-   - có từ cấm: giờ trong ngày, thời tiết, "young", "veteran", "deserved"...
-
-### 1.3. Sự kiện đặc biệt trong `events.csv`
-
-| Sự kiện FIFA | Xử lý |
+| Điều kiện | Khuôn câu |
 |---|---|
-| `Delay` "hydration break" | Câu tuỳ chọn `background`: "A short break for the players to take on water." Không nói lý do khác |
-| `VAR` | `live_news`: chỉ nói đúng `description` (ví dụ "Penalty given"). Không đoán tình huống |
-| `Penalty Awarded` rồi `Penalty Goal` cùng phút | Gộp một câu `live_news` |
-| `Own goal` | `live_news`: ghi rõ phản lưới, tỉ số mới |
-| `Goal!` + `Assist` | Gộp: người ghi bàn + người kiến tạo |
+| `league` | Hello and welcome to {stadium} in {city} for this {competition} matchday {matchday_word} clash between {home_team} and {away_team}. |
+| `league` | Welcome to {stadium}, {city}, where {home_team} host {away_team} on matchday {matchday_word} of the {competition}. |
+| `group` | Hello and welcome to {stadium} in {city} for this {competition} Group {group} match between {home_team} and {away_team}. |
+| `knockout` | Hello and welcome to {stadium} in {city} for this {competition} {stage} tie between {home_team} and {away_team}. |
+| `knockout` | Welcome to {stadium}, {city}: it's {home_team} against {away_team} in the {stage} of the {competition}. |
+| `final` | Hello and welcome to {stadium} in {city} for the {competition} Final between {home_team} and {away_team}. |
+| thiếu `{city}` | Hello and welcome to {stadium} for this {competition} {round_phrase} match between {home_team} and {away_team}. |
+
+**A2. Hai đội và HLV**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| có 2 HLV | It's {home_coach}'s {home_team} against {away_coach}'s {away_team}. |
+| có 2 HLV | {home_team}, led by {home_coach}, take on {away_coach}'s {away_team}. |
+| thiếu HLV | {home_team} take on {away_team}. |
+
+**A3. Ý nghĩa trận đấu**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| `knockout` | It's knockout football: the winner goes through to the {next_stage}. |
+| `knockout` | Win today and you're in the {next_stage}; lose and you go home. |
+| `final` | One game for the trophy: the winner is crowned {competition} champion. |
+| `group` có bảng xếp hạng | {home_team} have {home_points} points in Group {group}, {away_team} have {away_points}. |
+| `league`, matchday 1 | It's the opening day of the season, and both sides want to start with three points. |
+| `league` có bảng xếp hạng | {home_team} start the day {home_position} on {home_points} points, {away_team} are {away_position} on {away_points}. |
+
+**Tuỳ chọn ở đầu trận** (nói trong các khoảng trống của 15 phút đầu, mỗi câu một lần):
+
+| Chủ đề | Khuôn câu |
+|---|---|
+| Phong độ | {home_team} have won {home_wins_last5} of their last five games. |
+| Phong độ | {away_team}'s last five results read {away_form}. |
+| Đối đầu | These two sides have met {h2h_count} times: {h2h_home_wins} wins for {home_team}, {h2h_away_wins} for {away_team} and {h2h_draws} draws. |
+| Sơ đồ | {home_team} line up in a {home_tactics}, {away_team} in a {away_tactics}. |
+| Đội trưởng | {home_captain} captains {home_team}, {away_captain} leads {away_team}. |
+| Trọng tài | {referee} is the referee today. |
+| Khán giả | The attendance today is {attendance}. |
+| Sân | {stadium}, built in {stadium_built}, holds {capacity} spectators. |
+
+### B. Trong hiệp 1 và E. Trong hiệp 2
+
+**B1. Tin nóng** (bắt buộc, trong vòng 30 giây sau thời điểm FIFA ghi trong `events.csv`)
+
+| Sự kiện FIFA | Khuôn câu |
+|---|---|
+| `Goal!` | Goal! {player} scores for {team} in the {minute_ordinal} minute. {score}. |
+| `Goal!` + `Assist` | Goal for {team}! {player} scores, set up by {assist_player}. {score}. |
+| `Own goal` | An own goal from {player}, and it counts for {benefit_team}. {score}. |
+| `Penalty Goal` | {player} scores from the penalty spot for {team}. {score}. |
+| `Penalty Awarded` | Penalty to {team}! |
+| `Penalty Missed` / `Attempt Missed` sau phạt đền | {player} misses the penalty! It stays {score}. |
+| `Yellow card` | {player} ({team}) is shown a yellow card. |
+| `Red card` | {player} is sent off! {team} are down to ten. |
+| `Second yellow` | A second yellow for {player}, and {pronoun} is off. {team} are down to ten. |
+| `Substitution` | Change for {team}: {player_in} comes on for {player_off}. |
+| 2 thay người cùng phút | Double change for {team}: {player_in_1} replaces {player_off_1}, and {player_in_2} replaces {player_off_2}. |
+| `VAR` | The referee goes to VAR: {var_description}. |
+| `Delay` (uống nước) | A short break for the players to take on water. |
+
+Nhiều sự kiện cùng phút (ví dụ phạt đền + bàn thắng) thì **gộp một câu**, ưu tiên bàn thắng.
+
+**B2. Nhắc tỉ số** (bắt buộc khoảng mỗi 10 phút; không nhắc nếu 3 phút trước vừa nói tỉ số)
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| 0-0 | Still goalless here between {home_team} and {away_team}. |
+| 0-0 | No goals yet: {score}. |
+| hoà có bàn | All square at {lead_score}. |
+| hoà có bàn | It's level, {score}. |
+| dẫn 1 bàn | {leader} lead {lead_score}. |
+| dẫn 1 bàn | {score}, {leader} just in front. |
+| dẫn ≥ 2 bàn | {leader} are {margin} goals to the good, {score}. |
+
+**Tuỳ chọn trong hiệp** (khoảng trống ≥ 2 phút, không nói trong 2 phút sau bàn thắng)
+
+| Chủ đề | Khuôn câu |
+|---|---|
+| Đội hình (gộp) | In the {team} line-up: {player_1}, {player_2}, {player_3} and {player_4}. |
+| Ghế dự bị | On the {team} bench: {bench_list}. |
+| Số áo (gộp, tối đa 2 câu mỗi hiệp) | For {team}, {player_1} wears {n1}, {player_2} {n2} and {player_3} {n3}. |
+| Thẻ đã có | {player} has already been booked. |
+
+### C. Hết hiệp 1 (bắt buộc, tại `End Time` của hiệp 1)
+
+**C1. Tỉ số hiệp 1**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| 0-0 | The referee blows for half-time, and it's goalless: {score}. |
+| 0-0 | Half-time here, no goals yet between {home_team} and {away_team}. |
+| hoà có bàn | Half-time, and it's all square: {score}. |
+| dẫn | That's half-time. {leader} lead {lead_score}. |
+| dẫn | The whistle goes for the break with {leader} in front, {score}. |
+
+**C1b. Người ghi bàn** (chỉ khi hiệp 1 có bàn)
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| có bàn | The goals so far: {scorers}. |
+| 1 bàn | {scorer} with the only goal so far. |
+
+**C2. Mời xem hiệp 2**
+
+| Khuôn câu |
+|---|
+| Stay with us, the second half is coming up. |
+| Don't go anywhere, we'll be back for the second half. |
+
+### D. Bắt đầu hiệp 2 (bắt buộc, giây 5 của hiệp 2)
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| D1, luôn nói | The second half is under way. {score}. |
+| D1, luôn nói | We're back under way for the second half, {score_phrase}. |
+| D2, có thay người giờ nghỉ | {team} made a change at the break: {player_in} on for {player_off}. |
+
+`{score_phrase}`: 0-0 → "still goalless"; hoà → "all square at {lead_score}"; dẫn → "{leader} lead {lead_score}".
+
+### F. Cuối trận (bắt buộc)
+
+**F1. Phút 80'**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| hoà | Ten minutes to go, and it's still level: {score}. |
+| dẫn 1 bàn | Ten minutes left. {leader} lead {lead_score}; can {trailer} find a reply? |
+| dẫn ≥ 2 bàn | Ten minutes to go, and {leader} lead {lead_score}. |
+
+**F2. Phút 90' (vào bù giờ)**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| hoà | We're into stoppage time, and it's {score}. |
+| dẫn 1 bàn | Into stoppage time: {leader} lead {lead_score}, and {trailer} are running out of time. |
+| dẫn ≥ 2 bàn | Into stoppage time now, {score}. |
+
+### G. Hết trận (bắt buộc, tại `End Time` của hiệp 2, hoặc của hiệp phụ / luân lưu nếu có, theo thứ tự G1 → G4)
+
+**G1. Tỉ số chung cuộc**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| thắng | That's full-time! {score}. |
+| thắng | The final whistle goes: {winner} win {lead_score}. |
+| hoà 0-0 | Full-time, and it finishes goalless: {score}. |
+| hoà có bàn | Full-time, and the points are shared: {score}. |
+
+**G2. Người ghi bàn** (chỉ khi có bàn)
+
+| Khuôn câu |
+|---|
+| The goals: {scorers}. |
+
+**G3. Ý nghĩa kết quả**
+
+| Điều kiện | Khuôn câu |
+|---|---|
+| `knockout` | {winner} are through to the {next_stage}; {loser} are out. |
+| `final` | {winner} are the {competition} champions! |
+| `group` | {winner} take the three points in Group {group}. / Hoà: A point each in Group {group}. |
+| `league` thắng | {winner} take the three points on matchday {matchday_word}. |
+| `league` hoà | The points are shared on matchday {matchday_word}. |
+
+**G4. Chào kết thúc**
+
+| Khuôn câu |
+|---|
+| Thanks for joining us from {stadium}. Goodbye. |
+| That's all from {city}. Thank you for watching, and goodbye. |
+
+### H. Hiệp phụ (chỉ trận `knockout` / `final` hoà sau 90 phút)
+
+| Khi | Khuôn câu |
+|---|---|
+| Hết hiệp 2 | It's {score} after ninety minutes, so we're going to extra time. |
+| Đầu hiệp phụ 1 | Extra time is under way, {score}. |
+| Đầu hiệp phụ 2 | Fifteen minutes left in extra time, {score}. |
+
+### I. Luân lưu
+
+| Khi | Khuôn câu |
+|---|---|
+| Hết hiệp phụ | Still {score} after extra time: this will be decided on penalties. |
+| Hết luân lưu | {winner} win the shoot-out {winner_pens}-{loser_pens}! |
+
+Sau I, nói G3 và G4 như bình thường.
 
 ---
 
-## 2. System prompt (đặt một lần trong agent ElevenLabs)
+## 3. Quy tắc xếp lịch (code đảm bảo, không phải LLM)
+
+1. **Câu bắt buộc luôn được nói** (A1–A3, B1, B2, C1–C2, D1, F1, F2, G1–G4, và H, I nếu có). Nếu trùng sự kiện YES thì lùi sang khoảng trống gần nhất, không bỏ.
+2. **Thứ tự cố định:** A1 → A2 → A3; C1 → C1b → C2; G1 → G2 → G3 → G4. Các câu trong một nhóm cách nhau tối đa 15 giây.
+3. **Tin nóng** nói trong vòng 30 giây sau thời điểm FIFA ghi.
+4. **Khoảng cách tối thiểu:** cách sự kiện YES trước 15 giây, cách sự kiện YES sau 10 giây, cách câu NO trước 45 giây (câu bắt buộc trong cùng nhóm thì không áp dụng).
+5. **Không quá 2 câu liên tiếp cùng chủ đề.**
+6. **Câu tuỳ chọn** chỉ nói trong khoảng trống ≥ 2 phút, không nói trong 2 phút sau bàn thắng, mỗi chủ đề tối đa 1 lần mỗi hiệp (số áo: 2 lần).
+7. **Kiểm tra câu LLM.** Câu bị loại thì dùng khuôn câu đã điền biến:
+   - có con số không có trong tin nhắn;
+   - có tên người không có trong tin nhắn;
+   - quá số từ;
+   - có từ cấm: morning, afternoon, evening, tonight, weather, young, veteran, deserved...
+
+---
+
+## 4. System prompt (đặt một lần trong agent ElevenLabs, dùng cho mọi trận)
 
 ```text
 You are the lead TV commentator of a live football broadcast. A second voice describes the action on the pitch.
@@ -73,151 +294,90 @@ and to fill the quiet moments with the information you are given.
 
 Each message gives you:
 PHASE, GENDER, MATCH, MINUTE, SCORE, FACT (what to say), LAST EVENT (what just happened on the pitch),
-ALREADY SAID (your recent lines), and sometimes NEXT ROUND, POINTS or SCORERS.
-Answer with the line to be spoken, nothing else.
+ALREADY SAID (your recent lines), and sometimes SCORERS, NEXT ROUND or POINTS.
+Say the FACT as a live commentator would. Answer with the line to be spoken, nothing else.
 
 Language: English. Spoken, natural, live broadcast style.
 
 Hard rules:
 1. Use only the information in the message. Never invent names, numbers, statistics, records, injuries,
    quotes, weather, time of day, crowd reactions or actions on the pitch.
-2. The SCORE in the message is always right. Never say any other score. Say scores as "Brazil 1, Norway 2"
-   or "Norway lead 2-1".
-3. Say the minute only if it is in the FACT, and exactly as written there.
+2. The SCORE in the message is always right. Never say any other score.
+3. Say a minute only if it is in the FACT, and exactly as written there.
 4. You cannot see the pitch. Never describe passes, shots, saves, chances or pressure unless they are
    in the FACT or the LAST EVENT.
 5. Length: one or two sentences, at most 30 words. PHASE welcome and full_time: at most 45 words.
-6. Do not repeat the wording of ALREADY SAID. Start each line in a different way.
+6. Keep every name, team, number and score of the FACT. Change only the wording, and do not repeat
+   the wording of ALREADY SAID.
 7. Emotion is allowed: excitement for a goal, tension when time is running out.
    Opinions are not: never judge players, tactics, the referee or who deserves to win.
 8. GENDER women: players are she/her. GENDER men: he/him.
 9. No quotes, emojis, markdown, hashtags, stage directions or speaker names.
 
 Phase rules:
-- welcome: greet the viewers ("Hello and welcome"), then name the competition, the stage or matchday,
-  the stadium and the city. Do not say good morning, afternoon or evening.
+- welcome: greet the viewers ("Hello and welcome"), name the stadium, the city, the competition,
+  the round or matchday and both teams. Never say good morning, afternoon or evening.
 - teams: introduce both teams and their head coaches, home team first.
-- stakes: say what is at stake, only from the FACT (knockout round, matchday, table position, form).
+- stakes: say what is at stake, only from the FACT.
 - live_news: a goal, card, substitution, penalty or VAR decision just happened. Say it right away.
-  For a goal: excited, the scorer, the minute from the FACT and the new SCORE.
-  For cards and substitutions: neutral, short.
+  Goal: excited, with the scorer and the new SCORE. Cards and substitutions: neutral and short.
 - score_update: remind the score in a fresh way, short.
 - background: one piece of background from the FACT, calm tone.
-- half_time: the referee has blown for half-time. Give the half-time SCORE and the SCORERS if any,
-  then invite the viewers to stay for the second half.
-- second_half: the second half is under way. Remind the SCORE. Mention half-time substitutions if in the FACT.
-- late_game: about ten minutes are left, or stoppage time has begun. Build tension with the SCORE.
-- extra_time: the match goes to extra time. Give the SCORE.
-- penalties: the match goes to a penalty shoot-out, or the shoot-out is over. Use only the FACT.
+- half_time: the half-time whistle. Give the SCORE and the SCORERS if any, then invite the viewers
+  to stay for the second half.
+- second_half: the second half is under way. Remind the SCORE.
+- late_game: about ten minutes left, or stoppage time has begun. Build tension with the SCORE.
+- extra_time: the match goes to extra time, or extra time is under way. Give the SCORE.
+- penalties: the match goes to penalties, or the shoot-out is over. Use only the FACT.
 - full_time: the final whistle. Give the final SCORE, the SCORERS, what the result means
-  (NEXT ROUND or POINTS from the message), then say goodbye to the viewers.
+  (NEXT ROUND or POINTS), then say goodbye to the viewers.
 ```
 
 ---
 
-## 3. Mẫu tin nhắn gửi cho LLM mỗi lượt
+## 5. Khuôn tin nhắn gửi cho LLM mỗi lượt
 
-Code tạo tin nhắn này. Các trường code tính sẵn để LLM **không phải suy luận**: `SCORE`, `MINUTE`, `SCORERS`, `NEXT ROUND`, `POINTS`, `GENDER`.
-
-### 3.1. Giai đoạn mở đầu (A1)
 ```text
-PHASE: welcome
-GENDER: men
-MATCH: Brazil v Norway, FIFA World Cup 2026, Round of 16, New York/New Jersey Stadium, New Jersey
-MINUTE: 1' (kick-off)
-SCORE: Brazil 0, Norway 0
-FACT: Welcome to New York/New Jersey Stadium (New Jersey) for this FIFA World Cup match between Brazil and Norway, Round of 16.
-LAST EVENT: none
-ALREADY SAID: none
+PHASE: {phase}
+GENDER: {men|women}
+MATCH: {home_team} v {away_team}, {competition}, {round_phrase}, {stadium}, {city}
+MINUTE: {minute}
+SCORE: {score}
+SCORERS: {scorers}                      (chỉ có ở half_time, full_time)
+NEXT ROUND: {next_round_sentence}       (chỉ có ở full_time của knockout / final)
+POINTS: {points_sentence}               (chỉ có ở full_time của league / group)
+FACT: {khuôn câu ở mục 2 đã điền biến}
+LAST EVENT: {câu YES gần nhất, đã bỏ [PLAYER]/[TEAM]} hoặc none
+ALREADY SAID: {3 câu NO gần nhất, cách nhau bởi " | "} hoặc none
 YOUR LINE:
 ```
 
-### 3.2. Tin nóng (B1, bàn thắng)
-```text
-PHASE: live_news
-GENDER: men
-MATCH: Brazil v Norway, FIFA World Cup 2026, Round of 16
-MINUTE: 79'
-SCORE: Brazil 0, Norway 1
-FACT: Goal! Erling Haaland scores for Norway in the 79th minute. Brazil 0, Norway 1.
-LAST EVENT: a cross into the box, cleared by the defence.
-ALREADY SAID: Change for Norway: Fredrik Aursnes on for Julian Ryerson. | Still goalless, Brazil 0, Norway 0.
-YOUR LINE:
-```
-
-### 3.3. Hết hiệp 1 (C1 + C2)
-```text
-PHASE: half_time
-GENDER: men
-MATCH: Brazil v Norway, FIFA World Cup 2026, Round of 16
-MINUTE: 45'+7' (end of the first half)
-SCORE: Brazil 0, Norway 0
-SCORERS: none
-FACT: At half-time it is Brazil 0, Norway 0.
-LAST EVENT: a corner, cleared by the defence.
-ALREADY SAID: Marquinhos wears the captain's armband for Brazil. | Still goalless here.
-YOUR LINE:
-```
-
-### 3.4. Hết trận (G1 → G4)
-```text
-PHASE: full_time
-GENDER: men
-MATCH: Brazil v Norway, FIFA World Cup 2026, Round of 16, New York/New Jersey Stadium, New Jersey
-MINUTE: 90'+12' (final whistle)
-SCORE: Brazil 1, Norway 2
-SCORERS: Erling Haaland 79', 90' (Norway); Neymar Jr 90'+10' penalty (Brazil)
-NEXT ROUND: Norway go through to the quarter-finals. Brazil are out.
-FACT: Full-time: Brazil 1, Norway 2.
-LAST EVENT: Neymar Jr scores from the penalty spot.
-ALREADY SAID: Into stoppage time, Norway lead 2-0. | Neymar Jr is shown a yellow card.
-YOUR LINE:
-```
-
-Giải VĐQG thì thay `NEXT ROUND` bằng `POINTS`, ví dụ `POINTS: Chelsea take the three points on matchday 1.` Trận hoà: `POINTS: The points are shared.`
-
-**Cách code tính `NEXT ROUND`:** `stage` → vòng sau theo thứ tự Round of 32 → Round of 16 → Quarter-final → Semi-final → Final. Đội thắng lấy theo tỉ số (hoặc luân lưu nếu hoà). Nếu `stage` là "Final" thì `NEXT ROUND: <đội thắng> are the champions.`
+`{next_round_sentence}`, ví dụ "{winner} go through to the {next_stage}. {loser} are out."
+`{points_sentence}`, ví dụ "{winner} take the three points." hoặc "The points are shared."
 
 ---
 
-## 4. Câu dự phòng và câu mong đợi (trận Brazil 1–2 Norway)
+## 6. Kiểm tra: cùng một khuôn, 2 trận khác nhau
 
-Số liệu thật từ `facts.csv` / `events.csv`. Cột "LLM mong đợi" là mẫu để so chất lượng, không phải câu cố định.
-
-| Mã | Thời điểm | Câu dự phòng (khi LLM lỗi) | LLM mong đợi (ví dụ) |
-|---|---|---|---|
-| A1 | 1 - 00:05 | Hello and welcome to New York/New Jersey Stadium for this FIFA World Cup Round of 16 match between Brazil and Norway. | Hello and welcome to the New York/New Jersey Stadium, where Brazil and Norway meet in the Round of 16 of the World Cup. |
-| A2 | sau A1 | It is Carlo Ancelotti's Brazil against Ståle Solbakken's Norway. | Carlo Ancelotti's Brazil take on Ståle Solbakken's Norway. |
-| A3 | sau A2 | This is a knockout match: the winner goes through to the quarter-finals. | It's knockout football now: win, and you're in the quarter-finals. |
-| B (tuỳ chọn) | khoảng trống | Brazil's last 5 results: W D W W W. | Brazil come in with four wins from their last five, most recently 2-1 against Japan. |
-| B (nghỉ) | 1 - 27:00 | A short break for the players to take on water. | A brief pause here as the players take on water. |
-| C1+C2 | 1 - 52:00 (45'+7') | The referee blows for half-time. Brazil 0, Norway 0. Stay with us for the second half. | There's the half-time whistle, Brazil 0, Norway 0. Stay with us, the second half is coming up. |
-| D1 | 2 - 00:05 | The second half is under way. Brazil 0, Norway 0. | We're back under way for the second half, still goalless. |
-| B1 | 2 - 13:00 | Change for Brazil in the 58th minute: Endrick comes on for Matheus Cunha. | A change for Brazil: Endrick replaces Matheus Cunha. |
-| B1 | 2 - 34:00 | Goal! Erling Haaland scores for Norway in the 79th minute. Brazil 0, Norway 1. | Goal for Norway! Erling Haaland in the 79th minute, and it's Brazil 0, Norway 1! |
-| F1 | 2 - 35:00 (80') | About ten minutes left. Brazil 0, Norway 1. | Ten minutes to go and Norway lead 1-0. |
-| F2 | 2 - 45:00 (90') | We are into stoppage time. Brazil 0, Norway 2. | Into stoppage time now, and Norway lead 2-0. |
-| B1 | 2 - 55:00 | Goal! Neymar Jr scores for Brazil from the penalty spot. Brazil 1, Norway 2. | Neymar Jr scores the penalty! Brazil 1, Norway 2, and we're deep into stoppage time. |
-| G1+G2 | 2 - 57:00 (90'+12') | Full-time: Brazil 1, Norway 2. Goals from Erling Haaland (2) and Neymar Jr. | That's full-time! Brazil 1, Norway 2, with two goals from Erling Haaland and a late penalty from Neymar Jr. |
-| G3+G4 | sau G1 | Norway go through to the quarter-finals. Thank you for joining us. | Norway are into the World Cup quarter-finals. Thanks for watching, and goodbye from New Jersey. |
-
-Ví dụ câu **bị loại** (bộ kiểm tra ở mục 1.2, quy tắc 8):
-
-| Câu LLM | Lý do bị loại |
-|---|---|
-| "Good evening and welcome to New Jersey..." | Có giờ trong ngày |
-| "Haaland, the young striker, scores again!" | Từ cấm "young" (thông tin không có trong tin nhắn) |
-| "Norway lead 3-1 now." | Tỉ số khác `SCORE` |
-| "Brazil deserved more today." | Nhận xét (vi phạm hard rule 7) |
+| Mã | Chelsea 2–1 Man City (WSL, matchday 1, nữ) | Brazil 1–2 Norway (World Cup, Round of 16, nam) |
+|---|---|---|
+| A1 | Hello and welcome to Stamford Bridge in London for this Women's Super League matchday one clash between Chelsea and Manchester City. | Hello and welcome to New York/New Jersey Stadium in New Jersey for this FIFA World Cup Round of 16 tie between Brazil and Norway. |
+| A2 | It's Sonia Bompastor's Chelsea against Andrée Alexander Jeglertz's Manchester City. | It's Carlo Ancelotti's Brazil against Ståle Solbakken's Norway. |
+| A3 | It's the opening day of the season, and both sides want to start with three points. | It's knockout football: the winner goes through to the quarter-finals. |
+| C1 | That's half-time. Chelsea lead 1-0. | The referee blows for half-time, and it's goalless: Brazil 0, Norway 0. |
+| C2 | Stay with us, the second half is coming up. | Don't go anywhere, we'll be back for the second half. |
+| G1 | That's full-time! Chelsea 2, Manchester City 1. | The final whistle goes: Norway win 2-1. |
+| G3 | Chelsea take the three points on matchday one. | Norway are through to the quarter-finals; Brazil are out. |
+| G4 | That's all from London. Thank you for watching, and goodbye. | Thanks for joining us from New York/New Jersey Stadium. Goodbye. |
 
 ---
 
-## 5. Triển khai vào code (sau khi duyệt)
+## 7. Triển khai vào code (sau khi duyệt)
 
 | File | Việc làm |
 |---|---|
-| `no_flow_llm.py` | Thay `SYSTEM_PROMPT` bằng mục 2. Tin nhắn thêm `PHASE`, `GENDER`, `SCORERS`, `NEXT ROUND` / `POINTS` theo mục 3. Bộ kiểm tra: tên người lạ, từ cấm, giới hạn từ theo phase |
-| `commentary_timeline.py` | Thêm các mốc bắt buộc A, C, D, F, G (H, I nếu có) vào lịch trước khi rải câu nền. Áp quy tắc 1.2 (2 câu cùng chủ đề, tỉ số mỗi 10 phút, gộp câu cầu thủ) |
-| `match_facts.py` | Tạo fact gộp cầu thủ (3–4 người / câu), fact `Delay`, `VAR`, và câu dự phòng cho từng phase |
+| `match_facts.py` | Tính các biến ở mục 1; lưu các khuôn câu ở mục 2 (có điều kiện); chọn biến thể; bỏ khuôn thiếu biến |
+| `commentary_timeline.py` | Đặt các câu bắt buộc (A, B2, C, D, F, G, H, I) vào lịch trước, rồi mới rải câu tuỳ chọn. Áp quy tắc mục 3 |
+| `no_flow_llm.py` | Thay `SYSTEM_PROMPT` bằng mục 4, tạo tin nhắn theo mục 5, kiểm tra câu theo mục 3.7 |
 
-Sau khi triển khai: chạy với `--llm template` (không tốn credit) để kiểm tra lịch câu, rồi mới chạy `--llm elevenlabs`.
+Chạy thử `--llm template` (chỉ dùng khuôn câu, không tốn credit) trên 2 trận, kiểm tra lịch câu, rồi mới chạy `--llm elevenlabs`.
