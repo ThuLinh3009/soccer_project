@@ -441,16 +441,42 @@ class Line:
     topic: str = ""
     vars: dict = field(default_factory=dict, repr=False)
 
+    slot: float = 0.0  # seconds until the next line (time_slots), set by no_flow_v2.py
+    after: str = ""  # code of the line this one follows in a chain (A1 -> A2 -> A3...): said right after it
+
     def __post_init__(self):
         self.phase = self.phase or PHASE_OF.get(self.code, "background")
         self.topic = self.topic or self.code
 
 
-WORDS_PER_SECOND = 2.6
+WORDS_PER_SECOND = 2.6  # spoken words per second (English TV commentary; measured on Gemini TTS: 2.4-3.2).
+# For Vietnamese a "word" is a syllable (split by spaces): about 4-5 per second. no_flow_v2.py --wps sets it.
+LEAD = 0.5  # seconds of silence a TTS clip has before / after the words
+
+
+def word_count(text):
+    return len(re.findall(r"\S+", text or ""))
 
 
 def speech_len(text):
-    return 1.0 + len(re.findall(r"\S+", text)) / WORDS_PER_SECOND
+    return 1.0 + word_count(text) / WORDS_PER_SECOND
+
+
+def max_words(slot, wps=None):
+    """Words that can be spoken in `slot` seconds."""
+    return max(0, int((slot - LEAD) * (wps or WORDS_PER_SECOND)))
+
+
+def time_slots(starts, half_lens, gap=0.3):
+    """starts: [(half, second)] of every line that will be spoken (yes and no).
+    -> {(half, second): seconds from this line to the next one, minus `gap`} (last line: to the end of the half)."""
+    slots = {}
+    for half in sorted({h for h, _ in starts}):
+        times = sorted({s for h, s in starts if h == half})
+        end = half_lens[half - 1] if half - 1 < len(half_lens) else times[-1] + 60
+        for t, nxt in zip(times, times[1:] + [end]):
+            slots[(half, t)] = max(0.0, nxt - t - gap)
+    return slots
 
 
 def end_time(ctx, half):
@@ -521,10 +547,12 @@ def build_schedule(ctx, yes_events, half_lens, seed=0, after_event=15, before_ev
             return lines[-1]
 
     def chain(half, t, codes, max_delay=60):
+        prev = ""
         for code in codes:
             text = render(code, V(half, t), rng)
             line = add(half, t, code, text, max_delay)
             if line:
+                line.after, prev = prev, code
                 t = line.second + speech_len(line.text) + 0.5
 
     # A: opening (half 1, from second 5)

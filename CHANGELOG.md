@@ -3,6 +3,30 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.1 (2026-11-12)
+Độ dài câu khớp với khoảng trống trên timeline; audio đọc liền mạch, `gameTime` ghi đúng lúc câu được nghe.
+
+- `script_v2.py`:
+  - `time_slots()`: mỗi câu (YES và NO) có **slot** = số giây đến câu kế tiếp trên timeline, trừ 0,3 s.
+  - `max_words()`: số từ đọc được trong slot = (slot − 0,5 s) × tốc độ đọc (mặc định 2,6 từ/giây tiếng Anh; tiếng Việt tính theo âm tiết, khoảng 4–5 âm tiết/giây).
+  - Câu trong chuỗi (A1→A2→A3, C1→C1b→C2, G1→G4) ghi `after` = câu đứng trước.
+- `no_flow_v2.py`:
+  - Tin nhắn gửi LLM có thêm `TIME: x giây, tối đa n từ`. Quy tắc 5 của system prompt: không bao giờ dài hơn TIME cho phép.
+  - Câu trả lời dài hơn slot thì hỏi lại LLM một lần (`--retries 1`), yêu cầu ngắn hơn; vẫn dài thì dùng khuôn câu.
+  - Timeline ghi thêm: `slot`, `words`, `max_words`, `est_seconds`, `over`. File `.txt` in `(số từ/tối đa, thời lượng ước tính/slot)` sau mỗi câu.
+  - Tham số mới: `--wps` (tốc độ đọc), `--gap`, `--retries`.
+  - Không giới hạn token ở API: giới hạn token cắt câu giữa chừng, và model 3.x tính cả token suy nghĩ vào giới hạn. Độ dài được kiểm soát bằng số từ.
+- `tts_v2.py`:
+  - Cắt khoảng lặng ở 2 đầu mỗi clip, xếp theo độ dài **thật**:
+    - câu NO nối tiếp (theo `after`, hoặc dự kiến cách câu trước ≤ `--join` 5 s) bắt đầu ở giây kế tiếp sau khi câu trước kết thúc;
+    - câu YES không bao giờ đọc trước sự kiện;
+    - không có 2 câu chồng nhau.
+  - Clip dài hơn slot thì tăng tốc bằng WSOLA (không đổi cao độ), tối đa `--max_speed 1.25`.
+  - `audio_timeline.json`: `gameTime` / `gameTimeEnd` = lúc câu thực sự được nghe, `planned` = giờ trong kịch bản, `speed`, `follows`. Ghi thêm tốc độ đọc đo được (`words_per_second`) để chỉnh `--wps`.
+  - Đọc được cả timeline v1 (`no_flow_llm.py`): tự tính slot, đổi `[PLAYER] ([TEAM])` thành "the player (the team)".
+  - Chỉ tạo Gemini client khi có câu chưa có trong cache (chạy lại toàn bộ từ cache thì không cần key).
+- Notebook `colab_test_pipeline_v5.1`: thêm `WORDS_PER_SECOND`, `TTS_MAX_SPEED`, `TTS_TIMELINE` ("v2" timeline cell 10, "v1" timeline cell 8).
+
 ## v5.0 (2026-11-12)
 Luồng NO **v2** (kịch bản 2.0 + Gemini) và **giọng đọc** (Gemini TTS). Đây là các file mới; code cũ giữ nguyên (`no_flow_llm.py` với ElevenLabs, cell 8–9 của notebook test vẫn chạy được).
 
