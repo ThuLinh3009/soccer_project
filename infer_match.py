@@ -11,7 +11,7 @@ ready for no_flow_llm.py --yes_events.
 usage:
     python infer_match.py --model_name gpt2-video60-mlp --features baidu_from_timesformer.npy \
         --game_dirs "dataset/new/fifa_world-cup/2026/2026-07-05 - Brazil 1 - 2 Norway" \
-        --nms_threshold 0.3 --top_k 3 --out_dir outputs/yes
+        --nms_threshold 0.5 --top_k 3 --out_dir outputs/yes
 """
 import json
 import os
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     p.add_argument("--game_dirs", nargs="+", required=True, help="folders with 1_<features> and 2_<features>")
     p.add_argument("--features", default="baidu_from_timesformer.npy")
     p.add_argument("--out_dir", default=os.path.join("outputs", "yes"))
-    p.add_argument("--nms_threshold", type=float, default=0.3, help="0.3: recall_loose 0.86 on valid (0.5: 0.61)")
+    p.add_argument("--nms_threshold", type=float, default=0.5, help="higher: fewer but more reliable spots (precision_loose 0.76 on valid at 0.5)")
     p.add_argument("--top_k", type=int, default=3, help="best value from retune on valid")
     p.add_argument("--NMS_window", type=int, default=30)
     p.add_argument("--framerate", type=int, default=1)

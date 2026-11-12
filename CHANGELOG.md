@@ -3,6 +3,15 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.13 (2026-11-12)
+- Mục tiêu đổi thành **bắt đúng** hơn là bắt nhiều: chọn ngưỡng NMS theo precision (tỉ lệ sự kiện báo ra là pha thật) thay vì METEOR hay recall.
+- `colab_video2caption_v4.13.ipynb`:
+  - Cell 2: `RETUNE_NMS = ["0.4", "0.5", "0.6", "0.7"]`, `FIXED_NMS = None`, thêm `SELECT_BY = "Precision_loose"` và `MIN_RECALL = 0.4` (bỏ ngưỡng bắt được dưới 40% sự kiện thật).
+  - Cell 12: chọn ngưỡng có `SELECT_BY` cao nhất trong các ngưỡng đạt `MIN_RECALL`, rồi chấm trên test mọi ngưỡng và in bảng so sánh.
+- `colab_test_pipeline_v4.13.ipynb`: `NMS_THRESHOLD = 0.5` (precision_loose 0,76 trên valid), cell 7b thử 0.4 / 0.5 / 0.6 / 0.7.
+- `infer_match.py`: `--nms_threshold` mặc định 0.5.
+- `HUONG_DAN.md`: cập nhật ghi chú NMS.
+
 ## v4.12 (2026-11-12)
 - Kết quả trên 2 trận mới (luồng YES):
 
