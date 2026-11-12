@@ -104,8 +104,17 @@ Notebook: **`colab_video2caption_vX.Y.ipynb`** (mở trên Colab, chạy lần l
 
 **Kết quả hiện tại** (60 trận, `gpt2-video60-mlp`):
 - Phép ép: ridge, context 4, R² 0,57 trên valid.
-- Test: 712 sự kiện / 10 trận, 429 câu khác nhau, Recall_loose 0,63, Precision_loose 0,78, METEOR_loose 0,22.
-- Cấu hình chọn trên valid: NMS 0.5, top_k 3. Từ v4.13 chọn NMS theo Precision_loose (ưu tiên báo đúng), thử 0.4–0.7; đổi NMS không cần train lại.
+- Cấu hình đã chốt (v4.14): **NMS 0.4**, top_k 3. Đổi NMS không cần train lại.
+- Test (10 trận) với NMS 0.4: 1128 sự kiện, 588 câu khác nhau, Recall_loose 0,78, Precision_loose 0,75, a_mAP_loose 0,39, METEOR_loose 0,21.
+- So sánh trên valid:
+
+  | NMS | Recall_loose | Precision_loose | Sự kiện / trận |
+  |---|---|---|---|
+  | 0.3 | 0,86 | 0,71 | ~160 |
+  | **0.4** | **0,76** | **0,75** | **~111** |
+  | 0.5 | 0,61 | 0,76 | ~71 |
+  | 0.6 | 0,42 | 0,82 | ~35 |
+  | 0.7 | 0,21 | 0,80 | ~14 |
 
 ---
 

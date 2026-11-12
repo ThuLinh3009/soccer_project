@@ -3,6 +3,27 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.14 (2026-11-12)
+- **Chốt NMS 0.4** cho luồng YES. Đổi NMS không cần train lại (dùng nguyên weight `gpt2-video60-mlp`).
+  - Test (10 trận): Recall_loose 0,777, Precision_loose 0,753, 1128 sự kiện (~113 mỗi trận), a_mAP_loose 0,395.
+  - Valid:
+
+    | NMS | Recall_loose | Precision_loose | Sự kiện / trận |
+    |---|---|---|---|
+    | 0.3 | 0,86 | 0,71 | ~160 |
+    | **0.4** | **0,76** | **0,75** | **~111** |
+    | 0.5 | 0,61 | 0,76 | ~71 |
+    | 0.6 | 0,42 | 0,82 | ~35 |
+    | 0.7 | 0,21 | 0,80 | ~14 |
+
+  - Tăng ngưỡng từ 0.4 lên 0.6 chỉ tăng precision 7 điểm nhưng mất gần nửa recall: độ đúng bị giới hạn bởi chất lượng model, không phải ngưỡng.
+- `infer_match.py`, `colab_test_pipeline_v4.14.ipynb`: NMS mặc định 0.4. `colab_video2caption_v4.14.ipynb`: `FIXED_NMS = 0.4`.
+- `NO_FLOW_SCRIPT.md` (mới, kịch bản 1.0): kịch bản bình luận và system prompt cho luồng NO.
+  - 9 giai đoạn (mở đầu, hiệp 1, hết hiệp 1, đầu hiệp 2, hiệp 2, cuối trận, hết trận, hiệp phụ, luân lưu) với câu bắt buộc và câu tuỳ chọn.
+  - Quy tắc xếp lịch, system prompt tiếng Anh (9 hard rules + quy tắc từng phase), mẫu tin nhắn, câu dự phòng và câu mong đợi cho trận Brazil – Norway.
+  - Chưa đưa vào code: chờ duyệt.
+- `HUONG_DAN.md`: cập nhật kết quả và bảng NMS.
+
 ## v4.13 (2026-11-12)
 - Mục tiêu đổi thành **bắt đúng** hơn là bắt nhiều: chọn ngưỡng NMS theo precision (tỉ lệ sự kiện báo ra là pha thật) thay vì METEOR hay recall.
 - `colab_video2caption_v4.13.ipynb`:
