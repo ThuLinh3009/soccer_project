@@ -18,7 +18,15 @@ Timing (v5.1), with the real length of every clip (silence at both ends cut off)
   (WSOLA, the pitch does not change), at most --max_speed times;
 - audio_timeline.json: gameTime / gameTimeEnd = when the clip is really heard, planned = time in the script.
 
-Key: GEMINI_API_KEY environment variable (Colab: Secrets), never written to a file.
+Engines (v5.2), --engine:
+- gemini (default): Gemini TTS through the API. Key: GEMINI_API_KEY environment variable (Colab: Secrets), never
+  written to a file. Free tier: small daily quota.
+- kokoro: Kokoro-82M, an open model that runs on this machine (Colab CPU or GPU): no key, no quota, the text is not
+  sent anywhere. English only. Needs `pip install "kokoro>=0.9.4" soundfile` and espeak-ng, Python 3.10-3.12.
+  Voices --kokoro_voice_yes / --kokoro_voice_no (first letter: a = American, b = British English).
+
+Demo part (v5.2): --start MM:SS --end MM:SS (time in the half) speaks only the lines of that part and also writes
+<half>_demo.wav / <half>_demo.mp4, cut to that part.
 
 usage:
     python tts_v2.py --timeline "outputs/no_flow_v2/<game>/commentary_timeline.json" \
@@ -28,6 +36,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 from argparse import ArgumentParser
 
@@ -41,6 +50,70 @@ RATE = 24000
 
 def format_game_time(half, sec):  # same as commentary_timeline.py (not imported: it needs the SoccerNet package)
     return f"{half} - {sec // 60:02d}:{sec % 60:02d}"
+
+
+ORDINAL = {1: "st", 2: "nd", 3: "rd"}
+
+
+def _ordinal(n):
+    n = int(n)
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else ORDINAL.get(n % 10, 'th')}"
+
+
+def spoken_text(text):
+    """Text a TTS model reads well: 85' -> 85th minute, 90'+4' -> 90th minute plus 4, 2-1 -> 2 1, 1-0 -> 1 nil,
+    3-4-2-1 -> 3 4 2 1, BRIGHT -> Bright, no brackets."""
+    t = re.sub(r"(\d+)['’]\s*\+\s*(\d+)['’]?", lambda m: f"{_ordinal(m.group(1))} minute plus {m.group(2)}", text)
+    t = re.sub(r"(\d+)['’](?!\w)", lambda m: f"{_ordinal(m.group(1))} minute", t)
+    t = re.sub(r"\b\d(?:-\d){2,}\b", lambda m: m.group(0).replace("-", " "), t)  # formation
+    t = re.sub(r"\b(\d+)-(\d+)\b", lambda m: f"{m.group(1)} {'nil' if m.group(2) == '0' else m.group(2)}"
+               if m.group(1) != "0" else f"nil {'nil' if m.group(2) == '0' else m.group(2)}", t)  # score
+    t = re.sub(r"\b[A-ZÀ-Ý]{3,}\b", lambda m: m.group(0) if m.group(0) in ("VAR", "FIFA", "UEFA", "WSL")
+               else m.group(0).capitalize(), t)
+    t = re.sub(r"\s*\(([^)]*)\)", r", \1,", t)
+    t = re.sub(r",\s*([.!?;:])", r"\1", t)
+    t = t.replace(";", ",").replace("!!", "!")
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def clock(value):
+    """'28:00' or '1680' -> seconds; None stays None."""
+    if value in (None, ""):
+        return None
+    parts = [float(x) for x in str(value).split(":")]
+    return parts[0] if len(parts) == 1 else parts[0] * 60 + parts[1]
+
+
+class Kokoro:
+    """Kokoro-82M on this machine. One model, one pipeline per language (first letter of the voice)."""
+
+    def __init__(self):
+        import torch
+        from kokoro import KModel
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = KModel(repo_id="hexgrad/Kokoro-82M").to(self.device).eval()
+        self.pipes = {}
+        print(f"  Kokoro-82M on {self.device}")
+
+    def speech(self, text, voice, speed=1.0):
+        from kokoro import KPipeline
+        lang = voice[0]
+        if lang not in self.pipes:
+            self.pipes[lang] = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M", model=self.model)
+        parts = []
+        for _, _, audio in self.pipes[lang](text, voice=voice, speed=speed, split_pattern=r"\n+"):
+            if audio is not None:
+                parts.append(audio.detach().cpu().numpy() if hasattr(audio, "detach") else np.asarray(audio))
+        if not parts:
+            raise RuntimeError("Kokoro gave no audio")
+        audio = np.concatenate(parts).astype(np.float32)
+        return (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes(), RATE
+
+
+def cut_video(src, out, start, end):
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", str(start), "-to", str(end), "-i", src,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "128k", out],
+                   check=True)
 
 
 def style_for(c, args):
@@ -140,28 +213,46 @@ def main(args):
             c["text"] = neutral_caption(c["text"])
     lines = [c for c in spoken if c["half"] in args.halves and (args.only == "all" or c["flow"] == args.only)]
     lines.sort(key=lambda c: (c["half"], c["second"]))
+    t0, t1 = clock(args.start), clock(args.end)
+    if t0 is not None or t1 is not None:  # demo part
+        t0 = t0 or 0.0
+        lines = [c for c in lines if t0 <= c["second"] and (t1 is None or c["second"] < t1)]
     if args.max_lines:
         lines = lines[:args.max_lines]
-    pool = ModelPool(args.tts_model)
-    gem = []  # created at the first clip that is not in the cache (no key needed when all clips are cached)
-    print(f"{data['game']}: {len(lines)} lines to speak | TTS {', '.join(pool.models)} | voices yes {args.voice_yes}, "
-          f"no {args.voice_no}")
+    kokoro = args.engine == "kokoro"
+    pool = ModelPool("kokoro-82m" if kokoro else args.tts_model)
+    voice_yes = args.kokoro_voice_yes if kokoro else args.voice_yes
+    voice_no = args.kokoro_voice_no if kokoro else args.voice_no
+    gem = []  # created at the first clip that is not in the cache (no key / no model needed when all are cached)
+    print(f"{data['game']}: {len(lines)} lines to speak | TTS {', '.join(pool.models)} | voices yes {voice_yes}, "
+          f"no {voice_no}")
 
     done, failed, cached = [], 0, 0
     for i, c in enumerate(lines):
-        voice = args.voice_yes if c["flow"] == "yes" else args.voice_no
-        style = style_for(c, args)
-        path = clip_path(clip_dir, voice, style, c["text"])
+        voice = voice_yes if c["flow"] == "yes" else voice_no
+        if kokoro:
+            speed = args.speed_goal if c.get("topic") == "goal" else args.speed_yes if c["flow"] == "yes" \
+                else args.speed_no
+            style, say = f"kokoro x{speed}", spoken_text(c["text"])
+        else:
+            style, say = style_for(c, args), c["text"]
+        path = clip_path(clip_dir, voice, style, say)
         if os.path.exists(path):
             cached += 1
         else:
             try:
-                if not gem:
-                    gem.append(Gemini(read_key(), args.backend, min_interval=60.0 / args.rpm if args.rpm else 0))
-                    print(f"  backend {gem[0].backend}")
-                pcm, rate = pool.call(lambda m: gem[0].speech(m, c["text"], voice=voice, style=style))
+                if kokoro:
+                    if not gem:
+                        gem.append(Kokoro())
+                    pcm, rate = gem[0].speech(say, voice, speed)
+                else:
+                    if not gem:
+                        gem.append(Gemini(read_key(), args.backend,
+                                          min_interval=60.0 / args.rpm if args.rpm else 0))
+                        print(f"  backend {gem[0].backend}")
+                    pcm, rate = pool.call(lambda m: gem[0].speech(m, say, voice=voice, style=style))
                 save_wav(path, pcm, rate)
-            except (GeminiError, OSError) as e:
+            except (GeminiError, OSError, RuntimeError, ValueError) as e:
                 failed += 1
                 print(f"  [{i + 1}/{len(lines)}] {c['gameTime']} TTS failed: {str(e)[:200]}")
                 if pool.current is None:
@@ -216,12 +307,28 @@ def main(args):
             note = (f", x{p['speed']}" if p["speed"] > 1 else "") + (f", planned {p['planned'][4:]}"
                                                                       if p["planned"] != p["gameTime"] else "")
             print(f"  {p['gameTime']} -> {p['gameTimeEnd'][4:]}  ({p['duration']:4.1f}s{note})  {p['text'][:70]}")
+        demo = t0 is not None
+        if demo:
+            d1 = min(t1 if t1 is not None else half_len, half_len)
+            if mine:  # do not cut a line that is still being spoken
+                d1 = min(max(d1, math.ceil(max(p["end"] for p in mine)) + 1), half_len)
+            part = track[int(t0 * RATE):int(d1 * RATE)]
+            demo_wav = os.path.join(out_dir, f"{half}_demo.wav")
+            save_wav(demo_wav, np.clip(part, -32768, 32767).astype(np.int16).tobytes(), RATE)
+            print(f"half {half}: demo part {format_game_time(half, int(t0))[4:]} - "
+                  f"{format_game_time(half, int(d1))[4:]} -> {demo_wav}")
         if args.video_dir:
-            video = os.path.join(args.video_dir, f"{half}_224p.mp4")
+            video = os.path.join(args.video_dir, args.video_name.format(half=half))
             if os.path.exists(video):
                 out = os.path.join(out_dir, f"{half}_commentary.mp4")
                 mux(video, wav, out, args.original_volume)
                 print(f"half {half}: video with commentary -> {out}")
+                if demo:
+                    demo_mp4 = os.path.join(out_dir, f"{half}_demo.mp4")
+                    cut_video(out, demo_mp4, t0, d1)
+                    print(f"half {half}: demo video -> {demo_mp4}")
+            else:
+                print(f"half {half}: no video {video}")
     with open(os.path.join(out_dir, "audio_timeline.json"), "w", encoding="utf-8") as f:
         json.dump({"game": data["game"], "tts_models": pool.models,
                    "words_per_second": {v: round(float(np.median(r)), 2) for v, r in rates.items()},
@@ -238,6 +345,17 @@ if __name__ == "__main__":
     p.add_argument("--timeline", required=True, help="commentary_timeline.json of no_flow_v2.py")
     p.add_argument("--out_dir", default=None, help="default: <timeline folder>/audio")
     p.add_argument("--video_dir", default=None, help="folder with 1_224p.mp4 / 2_224p.mp4: also write the videos")
+    p.add_argument("--video_name", default="{half}_224p.mp4",
+                   help="video file of a half in --video_dir, e.g. {half}_720p.mp4 (cut_halves.py --height 720)")
+    p.add_argument("--engine", choices=["gemini", "kokoro"], default="gemini",
+                   help="gemini: API (key, quota) | kokoro: open model on this machine (no key, no quota, English)")
+    p.add_argument("--kokoro_voice_yes", default="am_michael", help="Kokoro voice of the yes lines")
+    p.add_argument("--kokoro_voice_no", default="bm_george", help="Kokoro voice of the no lines")
+    p.add_argument("--speed_yes", type=float, default=1.1, help="Kokoro speaking speed of the yes lines")
+    p.add_argument("--speed_no", type=float, default=1.0, help="Kokoro speaking speed of the no lines")
+    p.add_argument("--speed_goal", type=float, default=1.15, help="Kokoro speaking speed of a goal line")
+    p.add_argument("--start", default=None, help="demo part: speak only from this time of the half (MM:SS)")
+    p.add_argument("--end", default=None, help="demo part: ... to this time (MM:SS); also writes <half>_demo.*")
     p.add_argument("--tts_model", default="gemini-3.8-flash-lite-tts,gemini-2.5-flash-preview-tts,"
                                           "gemini-3.1-flash-tts-preview,gemini-3.8-flash-tts",
                    help="TTS models tried in order: the next one is used when a model has no quota left")

@@ -3,6 +3,21 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.2 (2026-11-12)
+Giọng đọc **không cần API** (Kokoro, chạy trên Colab) và cắt **đoạn video demo**. Phần Gemini TTS giữ nguyên.
+
+- `tts_v2.py`:
+  - `--engine kokoro`: Kokoro-82M (model mã nguồn mở) chạy ngay trên máy, không key, không quota, chỉ tiếng Anh. Cần `pip install "kokoro>=0.9.4" soundfile`, espeak-ng, Python 3.10–3.12. `--engine gemini` (mặc định) như cũ.
+  - Giọng Kokoro: `--kokoro_voice_yes am_michael` (sự kiện, tốc độ 1,1), `--kokoro_voice_no bm_george` (dẫn chương trình), bàn thắng tốc độ 1,15.
+  - Với Kokoro, ký hiệu được đổi thành lời trước khi đọc: `85'` → "85th minute", `90'+4'` → "90th minute plus 4", `2-1` → "2 1", `1-0` → "1 nil", `3-4-2-1` → "3 4 2 1", `BRIGHT (Chelsea)` → "Bright, Chelsea,".
+  - `--start MM:SS --end MM:SS`: chỉ đọc các câu trong đoạn đó của hiệp, ghi thêm `<hiệp>_demo.wav` và `<hiệp>_demo.mp4` (cắt đúng đoạn).
+  - `--video_name`: tên file video của hiệp (mặc định `{half}_224p.mp4`; ví dụ `{half}_720p.mp4` nếu cắt bằng `cut_halves.py --height 720`).
+- Notebook `colab_test_pipeline_v5.2`:
+  - Cell 12 (mới): cài Kokoro, đọc đoạn demo (`DEMO_HALF`, `DEMO_START`, `DEMO_END`), ghép vào video, hiện video ngay trong notebook. Kết quả ở `output/timeline_v2/<trận>/audio_kokoro/`.
+  - Chỉ làm demo: chạy cell 2, 3, 4, 10, 12 (không cần GPU nếu đã có kết quả luồng YES trên Drive).
+  - Cell 10: `GEMINI_LLM_MODEL = "template"` thì không gọi Gemini; kiểm tra key lỗi thì tự chuyển sang khuôn câu thay vì dừng.
+- Chưa chạy thật Kokoro trên máy local (Python 3.13 không cài được); phần code quanh nó đã thử bằng module giả.
+
 ## v5.1 (2026-11-12)
 Độ dài câu khớp với khoảng trống trên timeline; audio đọc liền mạch, `gameTime` ghi đúng lúc câu được nghe.
 
