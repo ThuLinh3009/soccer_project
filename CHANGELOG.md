@@ -3,6 +3,16 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v4.11 (2026-11-12)
+- Đổi ngưỡng NMS mặc định từ 0.5 xuống **0.3**. Trên valid của `gpt2-video60-mlp`, recall_loose tăng từ 0,61 lên 0,86 (precision_loose giảm từ 0,76 xuống 0,71).
+- NMS chỉ dùng lúc suy luận (chọn đỉnh sự kiện sau khi model chấm điểm). Lúc train, model được chọn theo loss, nên **đổi NMS không cần train lại**.
+- `colab_video2caption_v4.11.ipynb`:
+  - Cell 2: thêm `SKIP_TRAIN = True` (đã có checkpoint của `MODEL_NAME` trên Drive thì bỏ qua cell 11) và `FIXED_NMS = 0.3` (`None`: tự chọn theo METEOR như trước).
+  - Cell 12: với `FIXED_NMS` chỉ chọn `top_k` trên valid. Chấm trên test cả NMS 0.5 và 0.3, in bảng so sánh Recall / Precision / a_mAP / METEOR / số sự kiện. Bảng được lưu vào `retune_test_compare.csv`.
+- `infer_match.py`: `--nms_threshold` mặc định 0.3.
+- `colab_test_pipeline_v4.11.ipynb`: `NMS_THRESHOLD = 0.3`.
+- `HUONG_DAN.md`: ghi chú NMS 0.3.
+
 ## v4.10 (2026-11-11)
 - `HUONG_DAN.md` (mới): hướng dẫn tiếng Việt cài đặt và chạy toàn bộ dự án.
   - Tổng quan luồng YES / NO và sơ đồ pipeline.
