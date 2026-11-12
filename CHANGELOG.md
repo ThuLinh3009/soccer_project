@@ -3,6 +3,13 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.3 (2026-11-12)
+Sửa cell 12 của notebook test: Colab dùng Python 3.13 nên `pip install kokoro` lỗi (Kokoro cần Python 3.10–3.12).
+
+- Cell 12 tạo môi trường Python 3.12 riêng bằng `uv` (`/content/kokoro_env`), cài torch bản CPU, Kokoro và gói ngôn ngữ spaCy `en_core_web_sm`, rồi chạy `tts_v2.py` bằng Python của môi trường đó. Chỉ cài một lần mỗi phiên Colab.
+- Đã chạy thật Kokoro trên máy local theo đúng cách này (Python 3.12, CPU): 11 câu của đoạn 28:00–38:00 hiệp 1 trận Chelsea, khoảng 1 phút.
+- `tts_v2.py`: sửa ghi chú cài đặt.
+
 ## v5.2 (2026-11-12)
 Giọng đọc **không cần API** (Kokoro, chạy trên Colab) và cắt **đoạn video demo**. Phần Gemini TTS giữ nguyên.
 

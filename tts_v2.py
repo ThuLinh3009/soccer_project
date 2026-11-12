@@ -22,7 +22,8 @@ Engines (v5.2), --engine:
 - gemini (default): Gemini TTS through the API. Key: GEMINI_API_KEY environment variable (Colab: Secrets), never
   written to a file. Free tier: small daily quota.
 - kokoro: Kokoro-82M, an open model that runs on this machine (Colab CPU or GPU): no key, no quota, the text is not
-  sent anywhere. English only. Needs `pip install "kokoro>=0.9.4" soundfile` and espeak-ng, Python 3.10-3.12.
+  sent anywhere. English only. Needs Python 3.10-3.12 (not 3.13: make a 3.12 environment, e.g. `uv venv --seed
+  --python 3.12`), `pip install "kokoro>=0.9.4" soundfile`, `python -m spacy download en_core_web_sm`, espeak-ng.
   Voices --kokoro_voice_yes / --kokoro_voice_no (first letter: a = American, b = British English).
 
 Demo part (v5.2): --start MM:SS --end MM:SS (time in the half) speaks only the lines of that part and also writes
