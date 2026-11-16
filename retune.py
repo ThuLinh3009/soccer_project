@@ -28,20 +28,23 @@ from train import test_spotting, test_captioning
 FEATURE_SIZE = {"gpt2": 768, "gpt2-medium": 1024, "gpt2-large": 1280, "gpt2-xl": 1600}
 
 
-def load_spotting(args, dataset):
+def load_spotting(args, dataset, device="cuda"):
+    """device (v5.7): "cpu" when the machine has no GPU (infer_match.py on a Colab CPU runtime)."""
     model = Video2Spot(input_size=args.feature_dim, num_classes=len(dataset.dict_event),
                        window_size=args.window_size, vlad_k=args.vlad_k, framerate=args.framerate,
-                       pool=args.pool, proj_size=FEATURE_SIZE[args.gpt_type]).cuda()
-    checkpoint = torch.load(os.path.join("models", args.model_name, "spotting", "model.pth.tar"))
+                       pool=args.pool, proj_size=FEATURE_SIZE[args.gpt_type]).to(device)
+    checkpoint = torch.load(os.path.join("models", args.model_name, "spotting", "model.pth.tar"),
+                            map_location=device)
     model.load_state_dict(checkpoint["state_dict"])
     return model
 
 
-def load_caption(args, vocab_size):
+def load_caption(args, vocab_size, device="cuda"):
     model = Video2CaptionGPT(vocab_size=vocab_size, input_size=args.feature_dim, vlad_k=args.vlad_k,
                              window_size=args.window_size, framerate=args.framerate, pool=args.pool,
-                             num_layers=args.num_layers, gpt_type=args.gpt_type, gpt_path=args.gpt_type).cuda()
-    checkpoint = torch.load(os.path.join("models", args.model_name, "caption", "model.pth.tar"))
+                             num_layers=args.num_layers, gpt_type=args.gpt_type, gpt_path=args.gpt_type).to(device)
+    checkpoint = torch.load(os.path.join("models", args.model_name, "caption", "model.pth.tar"),
+                            map_location=device)
     model.load_state_dict(checkpoint["state_dict"])
     return model
 

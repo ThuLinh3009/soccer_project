@@ -3,6 +3,13 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.7 (2026-11-16)
+Sửa lỗi `AssertionError: Torch not compiled with CUDA enabled` ở cell 7 (luồng YES, `infer_match.py`) khi Colab chạy runtime CPU (không chọn GPU).
+
+- `infer_match.py`: thêm `--device` (mặc định `cuda`). Máy không có GPU thì tự chuyển sang `cpu` và in `device cpu` ở dòng đầu log. Trên CPU chậm hơn, mỗi trận vài phút.
+- `retune.py`: `load_spotting` và `load_caption` nhận thêm tham số `device` (mặc định `cuda` như cũ) và nạp checkpoint với `map_location`, nên checkpoint train trên GPU vẫn mở được trên CPU.
+- Bước tạo feature TimeSformer (cell 5–6) vẫn cần GPU. Nếu feature `.npy` đã có trên Drive thì cell 7 chạy được trên CPU.
+
 ## v5.6 (2026-11-16)
 Giọng đọc OpenAI TTS.
 

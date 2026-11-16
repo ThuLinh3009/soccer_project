@@ -57,7 +57,7 @@ def run_game(game_dir, args, spot_model, cap_model, inv_dict):
     clip_length = args.window_size * args.framerate
     preds = []
     for h, feats in enumerate(halves, start=1):
-        probs = spot_half(spot_model, torch.from_numpy(feats).cuda(), clip_length)
+        probs = spot_half(spot_model, torch.from_numpy(feats).to(args.device), clip_length)
         for frame, conf in nms(probs, args.NMS_window * args.framerate, args.nms_threshold):
             preds.append({"gameTime": game_time(h, frame, args.framerate), "label": inv_dict[0],
                           "position": str(int(frame / args.framerate * 1000)), "half": str(h),
@@ -80,7 +80,7 @@ def run_game(game_dir, args, spot_model, cap_model, inv_dict):
     enc = tiktoken.get_encoding("gpt2")
     for p in preds:
         clip = video((0, int(p["half"]) - 1, p.pop("_frame")), feats_per_game)
-        tokens = cap_model.sample(torch.from_numpy(clip).cuda())[0].tolist()
+        tokens = cap_model.sample(torch.from_numpy(clip).to(args.device))[0].tolist()
         p["comment"] = enc.decode([t for t in tokens if t != enc.eot_token]).strip()
     json.dump({"UrlLocal": game_dir, "predictions": preds},
               open(os.path.join(out, "results_dense_captioning.json"), "w"), indent=4)
@@ -96,10 +96,13 @@ def main(args):
     _, num_classes, dict_event, inv_dict = getMetaDataTask("caption", "SoccerNet", 2)
     first = os.path.join(args.game_dirs[0], f"1_{args.features}")
     args.feature_dim = np.load(first, mmap_mode="r").shape[-1]
+    if args.device == "cuda" and not torch.cuda.is_available():
+        args.device = "cpu"
     print(f"features {args.features}: {args.feature_dim} dims | model {args.model_name} | "
-          f"NMS {args.nms_threshold} | top_k {args.top_k}")
-    spot_model = load_spotting(args, Namespace(dict_event=dict_event)).eval()
-    cap_model = None if args.no_caption else load_caption(args, vocab_size=50257).eval()
+          f"NMS {args.nms_threshold} | top_k {args.top_k} | device {args.device}"
+          f"{' (no GPU: slower, a few minutes per match)' if args.device == 'cpu' else ''}")
+    spot_model = load_spotting(args, Namespace(dict_event=dict_event), args.device).eval()
+    cap_model = None if args.no_caption else load_caption(args, vocab_size=50257, device=args.device).eval()
     if cap_model is not None:
         cap_model.top_k = args.top_k
     for game_dir in args.game_dirs:
@@ -122,5 +125,7 @@ if __name__ == "__main__":
     p.add_argument("--num_layers", type=int, default=2)
     p.add_argument("--gpt_type", default="gpt2")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--device", default="cuda",
+                   help="cuda, or cpu (v5.7: used automatically when there is no GPU, e.g. a Colab CPU runtime)")
     p.add_argument("--no_caption", action="store_true", help="spotting only (results_spotting.json), e.g. for eval_vs_fifa.py")
     main(p.parse_args())
