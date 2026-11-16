@@ -3,6 +3,14 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.8 (2026-11-16)
+Notebook test: luồng NO không dùng ElevenLabs nữa. Giọng đọc của cả hai luồng là OpenAI `gpt-4o-mini-tts`. Chỉ sửa notebook, code Python giữ nguyên.
+
+- Luồng chính: cell 1–7 → 10 → 12. Chỉ làm demo: cell 2, 3, 4, 10, 12.
+- Cell 8–9 (bản cũ, ElevenLabs) mặc định bỏ qua, chỉ chạy khi `RUN_OLD_ELEVENLABS = True`. Cell 11 (Gemini TTS) mặc định bỏ qua, chỉ chạy khi `RUN_GEMINI_TTS = True`. Code của các cell này vẫn giữ.
+- Cell 10: `GEMINI_LLM_MODEL = "template"` là mặc định. Câu NO lấy từ khuôn của kịch bản 2.0, không gọi LLM và không đọc secret Gemini. Đặt tên model Gemini thì dùng Gemini như trước.
+- Phần giới thiệu và secrets: chỉ cần `OPENAI_API_KEY` (cell 12). Không cần key ElevenLabs.
+
 ## v5.7 (2026-11-16)
 Sửa lỗi `AssertionError: Torch not compiled with CUDA enabled` ở cell 7 (luồng YES, `infer_match.py`) khi Colab chạy runtime CPU (không chọn GPU).
 
