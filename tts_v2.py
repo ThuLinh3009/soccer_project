@@ -28,6 +28,9 @@ Engines (v5.2), --engine:
   sent anywhere. English only. Needs Python 3.10-3.12 (not 3.13: make a 3.12 environment, e.g. `uv venv --seed
   --python 3.12`), `pip install "kokoro>=0.9.4" soundfile`, `python -m spacy download en_core_web_sm`, espeak-ng.
   Voices --kokoro_voice_yes / --kokoro_voice_no (first letter: a = American, b = British English).
+- openai (v5.6): OpenAI TTS API, default model gpt-4o-mini-tts, voices --openai_voice_yes ash (play-by-play) /
+  --openai_voice_no onyx (presenter); the speaking style is given as `instructions` (goal: excited). Key: the
+  OPENAI_API_KEY environment variable (Colab: Secrets), never written to a file. Paid per character.
 
 Demo part (v5.2): --start MM:SS --end MM:SS (time in the half) speaks only the lines of that part and also writes
 <half>_demo.wav / <half>_demo.mp4, cut to that part.
@@ -114,10 +117,79 @@ class Kokoro:
         return (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes(), RATE
 
 
+class OpenAIStop(RuntimeError):
+    """Key refused or no credit left: no use asking again."""
+
+
+class OpenAITTS:
+    """OpenAI text to speech (v5.6): POST /v1/audio/speech, raw 24 kHz 16-bit mono PCM back. The key comes from the
+    OPENAI_API_KEY environment variable only (Colab: Secrets) and is never written to a file. `instructions` gives
+    the speaking style (gpt-4o-mini-tts)."""
+    URL = "https://api.openai.com/v1/audio/speech"
+
+    def __init__(self, model, min_interval=0.0):
+        key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not key:
+            raise OpenAIStop("no OPENAI_API_KEY environment variable")
+        self.key, self.model, self.min_interval, self.last = key, model, min_interval, 0.0
+
+    def speech(self, text, voice, instructions="", speed=1.0):
+        import time
+        import urllib.error
+        import urllib.request
+        body = {"model": self.model, "input": text, "voice": voice, "response_format": "pcm"}
+        if instructions:
+            body["instructions"] = instructions
+        if speed != 1.0:
+            body["speed"] = speed
+        for attempt in range(5):
+            wait = self.last + self.min_interval - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            self.last = time.time()
+            req = urllib.request.Request(self.URL, data=json.dumps(body).encode(), method="POST",
+                                         headers={"Authorization": f"Bearer {self.key}",
+                                                  "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    pcm = r.read()
+                if len(pcm) < 1000:
+                    raise RuntimeError("OpenAI TTS gave no audio")
+                return pcm, RATE
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode("utf-8", "replace")[:300]
+                if e.code == 401 or "insufficient_quota" in detail:
+                    raise OpenAIStop(f"OpenAI {e.code}: {detail}")
+                if e.code in (429, 500, 502, 503) and attempt < 4:
+                    time.sleep(5 * (attempt + 1))
+                    continue
+                raise RuntimeError(f"OpenAI {e.code}: {detail}")
+            except urllib.error.URLError as e:
+                if attempt < 4:
+                    time.sleep(5)
+                    continue
+                raise RuntimeError(f"OpenAI network error: {e}")
+        raise RuntimeError("OpenAI TTS: too many retries")
+
+
 def cut_video(src, out, start, end):
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", str(start), "-to", str(end), "-i", src,
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "128k", out],
                    check=True)
+
+
+OPENAI_STYLE = {
+    "yes": "Live football play-by-play commentator on TV. Energetic, quick and clear, following the action as it "
+           "happens. English accent of a sports broadcaster.",
+    "goal": "Football commentator celebrating a goal live on TV: very excited, loud, rising energy, but every name "
+            "still clear.",
+    "no": "Lead TV football presenter during a live match: warm, confident and conversational, brisk pace with no "
+          "long pauses, like filling a quiet moment of the game for the viewers.",
+}
+
+
+def style_key(c):
+    return "goal" if c.get("topic") == "goal" else "yes" if c["flow"] == "yes" else "no"
 
 
 def style_for(c, args):
@@ -223,10 +295,10 @@ def main(args):
         lines = [c for c in lines if t0 <= c["second"] and (t1 is None or c["second"] < t1)]
     if args.max_lines:
         lines = lines[:args.max_lines]
-    kokoro = args.engine == "kokoro"
-    pool = ModelPool("kokoro-82m" if kokoro else args.tts_model)
-    voice_yes = args.kokoro_voice_yes if kokoro else args.voice_yes
-    voice_no = args.kokoro_voice_no if kokoro else args.voice_no
+    kokoro, openai = args.engine == "kokoro", args.engine == "openai"
+    pool = ModelPool("kokoro-82m" if kokoro else args.openai_model if openai else args.tts_model)
+    voice_yes = args.kokoro_voice_yes if kokoro else args.openai_voice_yes if openai else args.voice_yes
+    voice_no = args.kokoro_voice_no if kokoro else args.openai_voice_no if openai else args.voice_no
     gem = []  # created at the first clip that is not in the cache (no key / no model needed when all are cached)
     print(f"{data['game']}: {len(lines)} lines to speak | TTS {', '.join(pool.models)} | voices yes {voice_yes}, "
           f"no {voice_no}")
@@ -238,6 +310,8 @@ def main(args):
             speed = args.speed_goal if c.get("topic") == "goal" else args.speed_yes if c["flow"] == "yes" \
                 else args.speed_no
             style, say = f"kokoro x{speed}", spoken_text(c["text"])
+        elif openai:
+            style, say = f"openai {args.openai_model} | {OPENAI_STYLE[style_key(c)]}", spoken_text(c["text"])
         else:
             style, say = style_for(c, args), c["text"]
         path = clip_path(clip_dir, voice, style, say)
@@ -249,6 +323,10 @@ def main(args):
                     if not gem:
                         gem.append(Kokoro())
                     pcm, rate = gem[0].speech(say, voice, speed)
+                elif openai:
+                    if not gem:
+                        gem.append(OpenAITTS(args.openai_model, min_interval=60.0 / args.rpm if args.rpm else 0))
+                    pcm, rate = gem[0].speech(say, voice, OPENAI_STYLE[style_key(c)])
                 else:
                     if not gem:
                         gem.append(Gemini(read_key(), args.backend,
@@ -259,6 +337,9 @@ def main(args):
             except (GeminiError, OSError, RuntimeError, ValueError) as e:
                 failed += 1
                 print(f"  [{i + 1}/{len(lines)}] {c['gameTime']} TTS failed: {str(e)[:200]}")
+                if isinstance(e, OpenAIStop):
+                    print("  OpenAI key refused or no credit left: stopping (clips made so far are kept)")
+                    break
                 if pool.current is None:
                     print("  no TTS quota left on any model: stopping (clips made so far are kept, run again later)")
                     break
@@ -375,8 +456,12 @@ if __name__ == "__main__":
     p.add_argument("--video_dir", default=None, help="folder with 1_224p.mp4 / 2_224p.mp4: also write the videos")
     p.add_argument("--video_name", default="{half}_224p.mp4",
                    help="video file of a half in --video_dir, e.g. {half}_720p.mp4 (cut_halves.py --height 720)")
-    p.add_argument("--engine", choices=["gemini", "kokoro"], default="gemini",
-                   help="gemini: API (key, quota) | kokoro: open model on this machine (no key, no quota, English)")
+    p.add_argument("--engine", choices=["gemini", "kokoro", "openai"], default="gemini",
+                   help="gemini: API (key, quota) | kokoro: open model on this machine (no key, no quota, English) | "
+                        "openai: OpenAI TTS API (key in OPENAI_API_KEY, paid per character)")
+    p.add_argument("--openai_model", default="gpt-4o-mini-tts", help="OpenAI TTS model")
+    p.add_argument("--openai_voice_yes", default="ash", help="OpenAI voice of the yes lines (play-by-play)")
+    p.add_argument("--openai_voice_no", default="onyx", help="OpenAI voice of the no lines (presenter)")
     p.add_argument("--kokoro_voice_yes", default="am_michael", help="Kokoro voice of the yes lines")
     p.add_argument("--kokoro_voice_no", default="bm_george", help="Kokoro voice of the no lines")
     p.add_argument("--speed_yes", type=float, default=1.1, help="Kokoro speaking speed of the yes lines")

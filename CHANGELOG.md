@@ -3,6 +3,14 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.6 (2026-11-16)
+Giọng đọc OpenAI TTS.
+
+- `tts_v2.py`: `--engine openai`, model `--openai_model gpt-4o-mini-tts`, giọng `--openai_voice_yes ash` (sự kiện) và `--openai_voice_no onyx` (dẫn chương trình). Phong cách đọc gửi qua `instructions`: sự kiện thì nhanh và sôi nổi, bàn thắng thì phấn khích, dẫn chương trình thì ấm và nhịp nhanh. Ký hiệu được đổi thành lời như với Kokoro. Gọi thẳng API bằng `urllib`, không cần cài thư viện. Lỗi 429/5xx thì thử lại; key sai hoặc hết tiền thì dừng, các clip đã tạo được giữ lại.
+- Key chỉ đọc từ biến môi trường `OPENAI_API_KEY` (Colab: Secrets), không ghi ra file.
+- Notebook `colab_test_pipeline_v5.6`, cell 2: `TTS_ENGINE = "openai"` (hoặc `"kokoro"`), `OPENAI_TTS_MODEL`, `OPENAI_VOICE_YES`, `OPENAI_VOICE_NO`. Cell 12 đọc secret `OPENAI_API_KEY`, chạy bằng Python của Colab (không cần môi trường Kokoro). Kết quả ở `audio_openai/`.
+- Chạy thật trên máy local, đoạn 28:00–38:00 hiệp 1 trận Chelsea, timeline liên tục v5.5: 117 câu, 0 câu lỗi. 79% thời gian có lời nói, khoảng nghỉ dài nhất 2,2 giây, câu YES lệch 0 giây, 6 câu được tăng tốc (dưới 1,25 lần). Tốc độ đọc đo được: ash 1,62 từ/giây, onyx 2,18 từ/giây (chậm hơn mức 2,6 dùng khi lập timeline).
+
 ## v5.5 (2026-11-16)
 Luồng NO **bình luận liên tục, không ngừng**. Kịch bản cũ (câu bắt buộc + thông tin nền) giữ nguyên; phần mới chạy sau nó.
 
