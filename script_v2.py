@@ -32,6 +32,16 @@ def num_word(n):
     return str(n)
 
 
+ORDINAL_WORDS = ("zeroth first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth "
+                 "thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth twentieth").split()
+
+
+def ordinal_word(n):
+    """3 -> 'third' (up to 20, then '21st')."""
+    n = int(n)
+    return ORDINAL_WORDS[n] if n < len(ORDINAL_WORDS) else ordinal(n)
+
+
 def ordinal(n):
     n = int(n)
     suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
@@ -633,6 +643,370 @@ def build_schedule(ctx, yes_events, half_lens, seed=0, after_event=15, before_ev
                 t = nxt + 1
     lines.sort(key=lambda l: (l.half, l.second))
     return lines, muted
+
+
+# ---------------------------------------------------------------- continuous commentary (v5.5)
+# The no flow talks without stopping: every silence between two lines (yes or no) is filled with lines made from the
+# metadata (players, units, coaches, form, head to head, venue, score and clock, recap of goals / cards / changes).
+
+POSITION_WORDS = {"GK": "in goal", "DF": "in defence", "MF": "in midfield", "FW": "up front"}
+UNIT_TEXT = {"DF": ["{team}'s back line: {names}.", "In defence for {team}: {names}."],
+             "MF": ["In the {team} midfield: {names}.", "{team}'s midfield today: {names}."],
+             "FW": ["Up front for {team}: {names}.", "Leading the line for {team}: {names}."]}
+MONTHS = "January February March April May June July August September October November December".split()
+
+
+def month_year(date):
+    m = re.match(r"(\d{4})-(\d{2})", date or "")
+    return f"{MONTHS[int(m.group(2)) - 1]} {m.group(1)}" if m else ""
+
+
+def result_text(team, r, when=True):
+    """One form / head-to-head row: 'Chelsea beat Crystal Palace 4-0 at home in April 2025.'"""
+    try:
+        gf, ga = int(r["goals_for"]), int(r["goals_against"])
+    except (KeyError, ValueError):
+        return None
+    venue = {"home": " at home", "away": " away"}.get(r.get("venue", ""), "")
+    date = f" in {month_year(r.get('date'))}" if when and month_year(r.get("date")) else ""
+    opp = r.get("opponent", "")
+    if not opp:
+        return None
+    if gf > ga:
+        return f"{team} beat {opp} {gf}-{ga}{venue}{date}."
+    if gf < ga:
+        return f"{team} lost {ga}-{gf} to {opp}{venue}{date}."
+    return f"{team} drew {gf}-{ga} with {opp}{venue}{date}."
+
+
+@dataclass
+class FillItem:
+    key: str
+    category: str
+    variants: list
+    uses: int = 0
+    last: float = -1e9  # time of the last use (half * 10000 + second)
+
+
+class Filler:
+    """Lines to fill a silence of a given length, chosen so that the topics take turns and nothing is repeated
+    soon. Static items (players, units, team facts, form, head to head, venue) are used once each first; when they
+    are all used, the least recently used one comes back (after `reuse_after` seconds) with its next wording.
+    Dynamic items (score, clock, recap) are made from the time of the line."""
+
+    COOLDOWN = {"stats": 40, "score": 100, "clock": 300, "recap": 150, "player": 0, "unit": 45, "team": 45,
+                "form": 45, "h2h": 60, "venue": 90, "bench": 90}
+    ORDER = ["player", "team", "unit", "stats", "form", "venue", "h2h", "bench", "recap", "score", "clock"]
+    # what the yes flow (or the FIFA stand-in) saw, counted per half: kind -> (keywords, singular, plural)
+    ACTIONS = {"corner": (r"corner", "corner", "corners"), "foul": (r"\bfoul", "foul", "fouls"),
+               "shot": (r"\bshot|attempt|effort|strike|header", "attempt on goal", "attempts on goal"),
+               "save": (r"\bsave", "save", "saves"), "free_kick": (r"free[- ]kick", "free kick", "free kicks"),
+               "offside": (r"offside", "offside", "offsides"), "yellow": (r"yellow card|booked", "yellow card",
+                                                                          "yellow cards")}
+    MIN_REUSE = 180  # a static item is never said twice within 3 minutes
+
+    def __init__(self, ctx, yes_events=(), reuse_after=900, seed=0):
+        self.ctx, self.reuse_after = ctx, reuse_after
+        self.rng = random.Random(seed)
+        self.items = self._static_items()
+        self.last_cat = {c: -1e9 for c in self.COOLDOWN}
+        self.last_cat.update(score=10000, clock=10000)  # not right after the welcome
+        self.recap_last = {}
+        self.yes = sorted((h, s, self.action_of(t)) for h, s, t in yes_events)
+        self.stats_said = {}  # (half, kind) -> count already said
+
+    @classmethod
+    def action_of(cls, text):
+        t = (text or "").lower()
+        for kind, (pattern, _, _) in cls.ACTIONS.items():
+            if re.search(pattern, t):
+                return kind
+        return ""
+
+    def _stats(self, half, second, prefer=""):
+        """'That's the third corner of the half.' from the yes events said before this time (counts that changed
+        since they were last said). prefer: the kind of the yes event just said goes first."""
+        counts = {}
+        for h, s, kind in self.yes:
+            if h == half and s < second and kind:
+                counts[kind] = counts.get(kind, 0) + 1
+        kinds = sorted(counts, key=lambda k: (k != prefer, -counts[k]))
+        out = []
+        for kind in kinds:
+            n = counts[kind]
+            if n < 2 or self.stats_said.get((half, kind)) == n:
+                continue
+            _, one, many = self.ACTIONS[kind]
+            name = "first" if half == 1 else "second"
+            out.append(((half, kind), n, [f"That's the {ordinal_word(n)} {one} of the {name} half.",
+                                          f"{num_word(n).capitalize()} {many} so far in this half.",
+                                          f"{num_word(n).capitalize()} {many} in the {name} half now."]))
+        return out
+
+    # ---------------- static items
+    def _static_items(self):
+        ctx, items = self.ctx, []
+        sides = [("home", ctx.home), ("away", ctx.away)]
+
+        def add(key, cat, *variants):
+            variants = [v for v in variants if v]
+            if variants:
+                items.append(FillItem(key, cat, variants))
+
+        starters = {side: ctx.players(side) for side, _ in sides}
+        for i in range(max(len(p) for p in starters.values()) if starters else 0):  # home and away take turns
+            for side, team in sides:
+                if i >= len(starters[side]):
+                    continue
+                r = starters[side][i]
+                name, n, pos = r["name"], r.get("shirt_number", ""), POSITION_WORDS.get(r.get("position", ""), "")
+                add(f"player:{name}", "player",
+                    f"{name} wears number {n} for {team}." if n else None,
+                    f"Number {n} for {team} is {name}." if n else None,
+                    f"{name} plays {pos} for {team}." if pos else None)
+        for side, team in sides:
+            cap, coach = ctx.captain(side), ctx.coach(side)
+            tactics = ctx.info.get(f"{side}_tactics", "")
+            if cap:
+                add(f"captain:{side}", "team", f"{cap} wears the captain's armband for {team}.",
+                    f"{team} are captained by {cap}.")
+            if coach:
+                add(f"coach:{side}", "team", f"{coach} is the {team} head coach.", f"{team} are coached by {coach}.")
+            if tactics:
+                add(f"tactics:{side}", "team", f"{team} set up in a {tactics}.", f"{team}'s formation today: {tactics}.")
+            pos, pts = ctx.standing(team)
+            if pos and pts:
+                add(f"table:{side}", "team", f"{team} started the day {pos} on {pts} points.")
+            for code, texts in UNIT_TEXT.items():
+                names = [r["name"] for r in starters[side] if r.get("position") == code]
+                if len(names) >= 2:
+                    add(f"unit:{side}:{code}", "unit", *[t.format(team=team, names=name_list(names)) for t in texts])
+            subs = [r["name"] for r in ctx.players(side, "substitute")]
+            for j in range(0, len(subs) - 1, 3):
+                group = name_list(subs[j:j + 3])
+                add(f"bench:{side}:{j}", "bench", f"On the {team} bench: {group}.",
+                    f"{team} have {group} among their substitutes.")
+            form, wins, n = ctx.form_of(team)
+            if n == 5:
+                add(f"form:{side}", "form", f"{team} have won {num_word(wins)} of their last five games.",
+                    f"{team}'s last five results read {form}.")
+            rows = sorted((r for r in ctx.form if r.get("team") == team), key=lambda r: r.get("date", ""))[-5:]
+            for k, r in enumerate(reversed(rows)):
+                text, my = result_text(team, r), month_year(r.get("date"))
+                if text:
+                    add(f"form:{side}:{k}", "form", ("Last time out, " + text) if k == 0 else text,
+                        f"In {my}, {result_text(team, r, when=False)}" if my else None)
+        h2h = sorted((r for r in ctx.h2h if r.get("team") == ctx.home), key=lambda r: r.get("date", ""))
+        v = ctx.base
+        if h2h:
+            add("h2h", "h2h", f"These two sides have met {v['h2h_count']} times: {v['h2h_home_wins']} wins for "
+                              f"{ctx.home}, {v['h2h_away_wins']} for {ctx.away} and {v['h2h_draws']} draws.",
+                f"In {v['h2h_count']} meetings, {ctx.home} have won {v['h2h_home_wins']}, {ctx.away} "
+                f"{v['h2h_away_wins']}, with {v['h2h_draws']} draws.")
+            for k, r in enumerate(reversed(h2h[-4:])):
+                text, my = result_text(ctx.home, r), month_year(r.get("date"))
+                if text:
+                    comp = clean_name(r.get("competition"))
+                    add(f"h2h:{k}", "h2h", ("When these two last met, " if k == 0 else "") + text,
+                        f"In the {comp}, {text}" if comp else None,
+                        f"In {my}, {result_text(ctx.home, r, when=False)}" if my else None)
+        add("referee", "venue", f"{v['referee']} is the referee today." if v["referee"] else None,
+            f"The match official today is {v['referee']}." if v["referee"] else None)
+        add("attendance", "venue", f"The attendance today is {v['attendance']}." if v["attendance"] else None,
+            f"{v['attendance']} fans are here today." if v["attendance"] else None)
+        add("stadium", "venue", f"{v['stadium']}, built in {v['stadium_built']}, holds {v['capacity']} spectators."
+            if v["stadium"] and v["stadium_built"] and v["capacity"] else None,
+            f"We're at {v['stadium']} in {v['city']}." if v["stadium"] and v["city"] else None)
+        add("competition", "venue", f"This is {v['competition']}, {v['round_phrase']}."
+            if v["competition"] and v["round_phrase"] else None)
+        return items
+
+    # ---------------- dynamic items
+    def _score(self, half, second):
+        v = self.ctx.vars_at(half, second)
+        when = minute_words(v["minute"]) or "this game"
+        h, a = v["home_goals"], v["away_goals"]
+        short = f"{self.ctx.home} {h}, {self.ctx.away} {a}."
+        if v["state"] == "nil":
+            texts = [f"Still goalless in {when}.", f"{when[0].upper() + when[1:]}, and it's {v['score']}.",
+                     f"No goals yet: {v['score']}."]
+        elif v["state"] == "draw":
+            texts = [f"All square at {v['lead_score']} in {when}.", f"It's level, {v['score']}."]
+        else:
+            texts = [f"{v['leader']} lead {v['lead_score']} in {when}.", f"It's {v['score']}.",
+                     f"{v['leader']} still in front, {v['score']}."]
+        return texts + [short]
+
+    def _clock(self, half, second, half_len):
+        minute = second // 60
+        name = "first" if half == 1 else "second"
+        if minute >= 45:
+            return [f"We're into stoppage time of the {name} half."]
+        left = 45 - minute
+        if left < 3 or minute < 5:
+            return []
+        return [f"About {num_word(left)} minutes left in the {name} half.",
+                f"{num_word(left).capitalize()} minutes to play in the {name} half."]
+
+    def _recap(self, half, second):
+        """Goals, cards and changes that happened at least a minute before this time."""
+        out, ctx = [], self.ctx
+        for g in ctx.goals:
+            if (g.half, g.second + 60) <= (half, second):
+                team = ctx.home if g.side == "home" else ctx.away
+                when = minute_words(g.minute)
+                what = "own goal" if g.kind == "og" else "penalty" if g.kind == "pen" else "goal"
+                out.append((f"goal:{g.player}:{g.minute}", [f"{g.player} scored for {team} in {when}."
+                            if what == "goal" else f"{team}'s {what} came in {when}, from {g.player}."]))
+        for r in ctx.events:
+            if (r["half"], r["second"] + 60) > (half, second) or r["half"] not in (1, 2):
+                continue
+            when = minute_words(r.get("minute") or game_minute(r["half"], r["second"]))
+            if r["type_name"] == "Yellow card" and r.get("player"):
+                out.append((f"card:{r['player']}", [f"{r['player']} of {r['team']} was booked in {when}."]))
+            elif r["type_name"] == "Substitution" and r.get("player") and r.get("player_off"):
+                out.append((f"sub:{r['player']}", [f"{r['player']} came on for {r['player_off']} for {r['team']} "
+                                                   f"in {when}."]))
+        return out
+
+    def gone_off(self, half, second):
+        out = set()
+        for r in self.ctx.events:
+            if (r["half"], r["second"]) > (half, second):
+                break
+            if r["type_name"] == "Substitution" and r.get("player_off"):
+                out.add(r["player_off"])
+            elif r["type_name"] in ("Red card", "Second yellow card") and r.get("player"):
+                out.add(r["player"])
+        return out
+
+    # ---------------- choose
+    def _fits(self, texts, budget):
+        return [t for t in texts if t and word_count(t) <= budget]
+
+    def pick(self, half, second, budget, half_len, after_yes=""):
+        """A line of at most `budget` words for this time, or (None, None).
+        after_yes: text of the yes event just said; its count (third corner...) is said first when it changed."""
+        now = half * 10000 + second
+        prefer = self.action_of(after_yes)
+        order = sorted(self.ORDER, key=lambda c: self.last_cat[c])  # the topic said longest ago first
+        if prefer:
+            order = ["stats"] + order
+        for cat in dict.fromkeys(order):
+            if now - self.last_cat[cat] < self.COOLDOWN[cat] and not (cat == "stats" and prefer):
+                continue
+            text = self._pick_cat(cat, half, second, budget, half_len, now, prefer)
+            if text:
+                self.last_cat[cat] = now
+                return cat, text
+        # every topic said recently: the static item said longest ago (at least MIN_REUSE seconds ago)
+        # (a topic other than the one just said first, so that two bench lines do not follow each other)
+        last = max(self.last_cat, key=self.last_cat.get)
+        off = self.gone_off(half, second)
+        old = sorted((it for it in self.items if it.uses and now - it.last >= self.MIN_REUSE and not (
+                      it.category in ("player", "unit") and any(name in it.variants[0] for name in off))),
+                     key=lambda it: (it.category == last, now - self.last_cat[it.category] < self.COOLDOWN[it.category],
+                                     it.last))
+        for it in old:
+            fit = self._fits(it.variants[it.uses % len(it.variants):] + it.variants[:it.uses % len(it.variants)],
+                             budget)
+            if fit:
+                it.uses, it.last = it.uses + 1, now
+                self.last_cat[it.category] = now
+                return it.category, fit[0]
+        return None, None
+
+    def _pick_cat(self, cat, half, second, budget, half_len, now, prefer=""):
+        if cat == "stats":
+            for key, n, texts in self._stats(half, second, prefer):
+                texts = self._fits(texts, budget)
+                if texts:
+                    self.stats_said[key] = n
+                    return self.rng.choice(texts)
+            return None
+        if cat == "score":
+            texts = self._fits(self._score(half, second), budget)
+            return self.rng.choice(texts) if texts else None
+        if cat == "clock":
+            texts = self._fits(self._clock(half, second, half_len), budget)
+            return self.rng.choice(texts) if texts else None
+        if cat == "recap":
+            for key, texts in self._recap(half, second):
+                if now - self.recap_last.get(key, -1e9) >= 480:
+                    texts = self._fits(texts, budget)
+                    if texts:
+                        self.recap_last[key] = now
+                        return texts[0]
+            return None
+        pool = [it for it in self.items if it.category == cat]
+        if cat in ("player", "unit"):  # not a player who has already gone off (substitution, red card)
+            off = self.gone_off(half, second)
+            pool = [it for it in pool if not any(name in it.variants[0] for name in off)]
+        fresh = [it for it in pool if it.uses == 0]
+        again = sorted((it for it in pool if it.uses and now - it.last >= self.reuse_after), key=lambda it: it.last)
+        text, budget_left, parts = None, budget, []
+        for it in fresh + again:  # up to 2 items of the same topic in one line
+            texts = it.variants[it.uses % len(it.variants):] + it.variants[:it.uses % len(it.variants)]
+            fit = self._fits(texts, budget_left - (1 if parts else 0))
+            if parts:  # not twice the same opening ("On the Chelsea bench: ... On the Chelsea bench: ...")
+                fit = [f for f in fit if f.split()[:3] != parts[0].split()[:3]]
+            if not fit:
+                continue
+            parts.append(fit[0])
+            it.uses, it.last = it.uses + 1, now
+            budget_left -= word_count(fit[0])
+            if len(parts) == 2 or budget_left < 6:
+                break
+        if parts:
+            text = " ".join(parts)
+        return text
+
+
+def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=1.0, min_fill=3.0,
+                    max_line_words=30, seed=0):
+    """Fill every silence of the timeline with no-flow lines, so that the commentary never stops.
+
+    yes_events: [(half, second, text)] (muted ones are not spoken); lines: the no-flow lines of build_schedule.
+    A silence starts `pause` seconds after the estimated end of a line (speech_len) and ends `margin` seconds before
+    the next line. Silences shorter than `min_fill` seconds are left. No filling after the half-time invitation (C2),
+    the goodbye (G4) or the extra-time line (H1). Returns the new lines (code FILL, topic = what they talk about)."""
+    said = [(h, s, t) for h, s, t in yes_events if (h, s) not in muted]
+    filler = Filler(ctx, said, seed=seed)
+    added = []
+    for half in (1, 2):
+        if half - 1 >= len(half_lens):
+            continue
+        half_len = half_lens[half - 1]
+        spoken = [(s, speech_len(t), "YES", t) for h, s, t in said if h == half]
+        spoken += [(l.second, speech_len(l.text), l.code, l.text) for l in lines if l.half == half]
+        spoken.sort(key=lambda x: x[0])
+        if not spoken:
+            continue
+        stop = min([s for s, _, code, _ in spoken if code in ("C2", "G4", "H1")] + [half_len])
+        end, prev_code, prev_text = None, "", ""  # no filling before the first line of the half (welcome)
+        for start, dur, code, text in spoken + [(half_len, 0.0, "END", "")]:
+            t = None if end is None else end + pause
+            limit = min(start, stop) - margin
+            while t is not None and t < stop and limit - t >= min_fill:
+                budget = min(max_line_words, max_words(limit - t))
+                if budget < 3:
+                    break
+                cat, text_fill = filler.pick(half, int(t), budget, half_len,
+                                             after_yes=prev_text if prev_code == "YES" else "")
+                if not text_fill:
+                    break
+                line = Line(half, round(t, 1), "FILL", text_fill, False, phase="background", topic=cat,
+                            vars=ctx.vars_at(half, int(t)))
+                line.after = "" if prev_code == "YES" else prev_code
+                line.vars["kind"] = ctx.kind
+                added.append(line)
+                prev_code = "FILL"
+                t = line.second + speech_len(text_fill) + pause
+            if start >= half_len:
+                break
+            end = start + dur if end is None else max(end, start + dur)
+            prev_code, prev_text = code, text
+    return added
 
 
 # ---------------------------------------------------------------- yes captions without [PLAYER] / [TEAM]

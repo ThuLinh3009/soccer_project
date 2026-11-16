@@ -3,6 +3,22 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.5 (2026-11-16)
+Luồng NO **bình luận liên tục, không ngừng**. Kịch bản cũ (câu bắt buộc + thông tin nền) giữ nguyên; phần mới chạy sau nó.
+
+- `script_v2.py`: thêm `Filler` và `fill_continuous()`. Mọi khoảng lặng dài hơn 3 giây giữa 2 câu (YES hoặc NO) được lấp bằng câu `FILL`, độ dài vừa khoảng lặng (số từ = thời gian × tốc độ đọc). Các câu cách nhau 0,7 giây và kết thúc trước câu kế tiếp 1 giây. Không lấp trước câu chào mừng, sau câu hẹn hiệp 2 (C2), sau câu chào tạm biệt (G4) và sau câu báo hiệp phụ (H1).
+- Nội dung câu lấp lấy từ metadata FIFA và luồng YES:
+  - thông tin tĩnh: cầu thủ và số áo, vị trí, hàng hậu vệ / tiền vệ / tiền đạo, đội trưởng, HLV, sơ đồ, dự bị, phong độ 5 trận, các lần đối đầu, trọng tài, khán giả, sân, giải đấu;
+  - thông tin theo thời điểm: tỉ số, số phút còn lại của hiệp, nhắc lại bàn thắng / thẻ / thay người đã xảy ra;
+  - thống kê từ luồng YES: đếm phạt góc, phạm lỗi, dứt điểm, cứu thua, đá phạt, việt vị, thẻ vàng trong hiệp ("That's the third corner of the first half"); nói ngay sau câu YES cùng loại.
+- Các chủ đề luân phiên (chủ đề nói lâu nhất được ưu tiên). Mỗi câu nói một lần trước; khi đã nói hết thì câu nói lâu nhất được nói lại với cách diễn đạt khác, không lặp trong vòng 3 phút. Cầu thủ đã bị thay ra hoặc bị đuổi thì không được nhắc là đang đá.
+- `no_flow_v2.py`: `--continuous` bật chế độ này; `--fill_pause` (0,7 giây); `--fill_llm` cho câu lấp đi qua Gemini (mặc định không: mỗi trận hàng nghìn câu, vượt xa quota miễn phí). Sau khi chạy, in ra mỗi hiệp số phút có lời nói và khoảng lặng dài nhất.
+- Notebook `colab_test_pipeline_v5.5`, cell 2: `CONTINUOUS = True`, `FILL_LLM = False`, `NO_FLOW_V2_GAMES = []`. Trước đây cell 10 dùng `NO_FLOW_GAMES` (chỉ trận Brazil) nên bỏ qua trận Chelsea; nay cell 10 có danh sách trận riêng, mặc định chạy mọi trận. Ở chế độ liên tục, cell 10 in các câu của đoạn demo.
+- Đã chạy thử với khuôn câu, dùng sự kiện FIFA thay luồng YES. Chelsea – Man City: 1046 câu NO (1011 câu lấp), khoảng 85% thời gian mỗi hiệp có lời nói, khoảng lặng dài nhất 4,4 giây (trước đây: 36 câu). Brazil – Norway: 1221 câu NO, khoảng 83%, khoảng lặng dài nhất 4,5 giây.
+- `tts_v2.py`: `--spread` (mặc định 2 giây). Khi chạy thật, clip Kokoro (đã cắt khoảng lặng) ngắn hơn ước tính, nên các câu NO nối tiếp bị dồn lên sớm và để lại khoảng lặng 6–13 giây trước câu YES (câu YES không được đọc sớm hơn sự kiện). Nay thời gian dư được chia đều vào các khoảng nghỉ của chuỗi câu đó, mỗi khoảng nghỉ thêm tối đa 2 giây. Câu YES vẫn đúng giờ.
+- Chạy thật Kokoro trên máy local, đoạn 28:00–38:00 hiệp 1 trận Chelsea (114 câu, gồm 6 câu YES): trước khi sửa thì tổng khoảng lặng giữa các câu là 126 giây, khoảng dài nhất 12,7 giây; sau khi sửa thì 78% thời gian có lời nói, khoảng nghỉ phổ biến khoảng 1 giây, dài nhất 3,0 giây, câu YES lệch 0 giây.
+- Hạn chế: chỉ có metadata, không nhìn thấy sân, nên sau khoảng 5 phút đầu các thông tin bắt đầu được nhắc lại. Một câu lấp xuất hiện trung bình khoảng 4 lần mỗi trận, nhiều nhất 14–16 lần.
+
 ## v5.4 (2026-11-12)
 - Notebook test, cell 12: bỏ tuỳ chọn `-q` của lệnh `spacy download` (spaCy 3.8 hiểu `-q` là tên gói và báo lỗi "No compatible package found for '-q'").
 

@@ -16,6 +16,9 @@ Timing (v5.1), with the real length of every clip (silence at both ends cut off)
   after the previous clip if that one is still speaking (no overlap);
 - the slot of the line (seconds until the next line, from no_flow_v2.py): a clip longer than its slot is sped up
   (WSOLA, the pitch does not change), at most --max_speed times;
+- (v5.5) a run of lines said one after the other that ends before the next fixed line (the real clips are shorter
+  than the schedule estimated) gets the time left spread over its pauses (at most --spread seconds more per pause):
+  no long silence before a yes line in continuous commentary (no_flow_v2.py --continuous);
 - audio_timeline.json: gameTime / gameTimeEnd = when the clip is really heard, planned = time in the script.
 
 Engines (v5.2), --engine:
@@ -267,7 +270,7 @@ def main(args):
     for half in args.halves:
         half_len = half_lens[half - 1]
         track = np.zeros(int(half_len * RATE) + RATE, dtype=np.float32)
-        prev_end, prev_code = None, None
+        prev_end, prev_code, items = None, None, []
         for c, path, voice in (d for d in done if d[0]["half"] == half):
             audio = trim(load_clip(path))
             raw = len(audio) / RATE
@@ -287,13 +290,37 @@ def main(args):
                     speed = min(raw / max(avail, 0.1), args.max_speed)
                     audio = time_stretch(audio, speed)
             dur = len(audio) / RATE
+            prev_end, prev_code = start + dur, c.get("code") or None
+            items.append([start, audio, c, voice, speed, follows])
+        # (v5.5) a run of lines said one after the other usually ends early (the real clips are shorter than the
+        # schedule estimated, and a yes line cannot move earlier): spread the time left over the pauses of the run,
+        # at most --spread seconds more per pause, so that no long silence is left before the next fixed line.
+        if args.spread > 0:
+            i = 0
+            while i < len(items):
+                j = i + 1
+                while j < len(items) and items[j][5]:
+                    j += 1
+                if j - i > 1:  # items[i] heads a run of j - i - 1 following lines
+                    run_end = items[j - 1][0] + len(items[j - 1][1]) / RATE
+                    anchor = items[j][0] if j < len(items) else half_len
+                    last = items[j - 1][2]
+                    if last.get("slot"):  # the next planned line may not be spoken here (demo part ends)
+                        anchor = min(anchor, last["second"] + last["slot"] + 0.3)
+                    slack = anchor - args.pause - run_end
+                    if slack > 0:
+                        extra = min(slack / (j - i), args.spread)
+                        for k in range(i + 1, j):
+                            items[k][0] += extra * (k - i)
+                i = j
+        for start, audio, c, voice, speed, follows in items:
+            dur = len(audio) / RATE
             a = int(start * RATE)
             b = min(a + len(audio), len(track))
             track[a:b] += audio[:b - a]
-            prev_end, prev_code = start + dur, c.get("code") or None
             placed.append({"half": half, "gameTime": format_game_time(half, int(start)),
                            "gameTimeEnd": format_game_time(half, int(math.ceil(start + dur))),
-                           "start": float(start), "end": round(start + dur, 2), "duration": round(dur, 2),
+                           "start": round(float(start), 2), "end": round(start + dur, 2), "duration": round(dur, 2),
                            "planned": c["gameTime"], "shift": round(start - c["second"], 2),
                            "speed": round(speed, 2), "follows": follows, "voice": voice, "flow": c["flow"],
                            "code": c.get("code", ""), "text": c["text"]})
@@ -372,6 +399,9 @@ if __name__ == "__main__":
     p.add_argument("--rpm", type=float, default=10, help="max TTS requests per minute")
     p.add_argument("--max_speed", type=float, default=1.25,
                    help="a clip longer than its time slot is sped up at most this much (1 = never)")
+    p.add_argument("--spread", type=float, default=2.0,
+                   help="(v5.5) a run of lines said one after the other that ends early: spread the time left over "
+                        "its pauses, at most this many seconds more per pause (0 = off)")
     p.add_argument("--join", type=float, default=5.0,
                    help="a no line planned less than this many seconds after the previous clip ends follows it")
     p.add_argument("--pause", type=float, default=0.2,

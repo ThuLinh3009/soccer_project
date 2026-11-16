@@ -13,6 +13,12 @@ New version next to no_flow_llm.py (v1, ElevenLabs, kept unchanged). Differences
   the most words that can be spoken in it (--wps words per second); the LLM is told "TIME: x s, at most n words",
   an answer longer than that is asked again shorter (--retries), then replaced by the template. The slot is written
   to the timeline; tts_v2.py measures the real clip and speeds it up a little when it is still too long.
+- (v5.5) --continuous: the commentary never stops. After the script, every silence between two lines (yes or no)
+  longer than 3 s is filled with FILL lines from the metadata, sized to the silence: players and shirt numbers,
+  units (defence / midfield / attack), captains, coaches, formations, bench, form, head to head, venue, the score
+  and the clock, and a recap of the goals, cards and changes so far. Topics take turns; nothing is repeated within
+  15 minutes until everything has been said. FILL lines are templates (no LLM call: hundreds of lines a match, far
+  above the free quota) unless --fill_llm.
 
 Output (<out_dir>/<game>/): commentary_timeline.json / .txt (yes + no lines), input of tts_v2.py.
 
@@ -28,8 +34,8 @@ from argparse import ArgumentParser
 from commentary_timeline import format_game_time
 from no_flow_llm import events_from_fifa, events_from_yes, half_lengths, load_fifa_events, numbers_ok
 import script_v2
-from script_v2 import (MatchContext, build_schedule, max_words, neutral_caption, speech_len, time_slots,
-                       word_count)
+from script_v2 import (MatchContext, build_schedule, fill_continuous, max_words, neutral_caption, speech_len,
+                       time_slots, word_count)
 
 SYSTEM_PROMPT = """You are the lead TV commentator of a live football broadcast. A second voice describes the action on \
 the pitch. Your job is to say the key lines of the broadcast (welcome, half-time, second half, late game, full-time) \
@@ -149,6 +155,11 @@ def main(args):
     yes = [(h, s, neutral_caption(text) if source == "yes" else text) for (h, s), text, _, _ in events]
     script_v2.WORDS_PER_SECOND = args.wps  # used by the schedule (speech_len) and the word budgets
     lines, muted = build_schedule(ctx, yes, half_lens, seed=args.seed)
+    n_fill = 0
+    if args.continuous:
+        fills = fill_continuous(ctx, lines, yes, muted, half_lens, pause=args.fill_pause, seed=args.seed)
+        n_fill = len(fills)
+        lines = sorted(lines + fills, key=lambda l: (l.half, l.second))
     slots = time_slots([(h, s) for h, s, _ in yes if (h, s) not in muted] + [(l.half, l.second) for l in lines],
                        half_lens, gap=args.gap)
     for line in lines:
@@ -156,7 +167,8 @@ def main(args):
     n_mand = sum(l.mandatory for l in lines)
     print(f"{game}: {ctx.kind} match, {ctx.gender} | {len(events)} events ({source}), "
           f"halves {half_lens[0] // 60}/{half_lens[1] // 60} min | {len(lines)} no-flow lines "
-          f"({n_mand} mandatory, {len(lines) - n_mand} optional), {len(muted)} yes comments muted | LLM {args.llm}")
+          f"({n_mand} mandatory, {len(lines) - n_mand - n_fill} optional, {n_fill} continuous fill), "
+          f"{len(muted)} yes comments muted | LLM {args.llm}{' (FILL lines: templates)' if n_fill and not args.fill_llm else ''}")
 
     llm = None
     if args.llm == "gemini":
@@ -183,7 +195,7 @@ def main(args):
         budget = budget_of(line.slot, line.phase)
         message = build_message(ctx, line, before[-1] if before else None, said[-args.history:], ctx.gender, budget)
         text, used = line.text, "template"
-        if llm and pool.current:
+        if llm and pool.current and (line.code != "FILL" or args.fill_llm):
             ask = message
             for attempt in range(1 + args.retries):
                 model = None
@@ -235,6 +247,14 @@ def main(args):
                                                 f"{c['slot']:.1f}s{' OVER' if c['over'] else ''})")
             f.write(f"{c['gameTime']}  [{tag:<5}] {c['text']}{time}\n")
     over = [c for c in timeline if not c.get("muted") and c["over"]]
+    for half in sorted({c["half"] for c in timeline}):  # how continuous the commentary is (estimated speech)
+        spoken = sorted((c["second"], c["est_seconds"]) for c in timeline if c["half"] == half and not c.get("muted"))
+        talk = sum(d for _, d in spoken)
+        gaps = [b[0] - (a[0] + a[1]) for a, b in zip(spoken, spoken[1:])]
+        long_gaps = [g for g in gaps if g > 3]
+        print(f"half {half}: {len(spoken)} lines, about {talk / 60:.1f} min of speech in {half_lens[half - 1] / 60:.1f} "
+              f"min ({100 * talk / half_lens[half - 1]:.0f}%), longest silence {max(gaps + [0]):.1f} s, "
+              f"{len(long_gaps)} silences over 3 s")
     print(f"{len(lines)} no-flow lines: {n_llm} by the LLM, {len(lines) - n_llm} templates"
           f"{' (rejected: ' + ', '.join(f'{k} {v}' for k, v in rejected.items()) + ')' if rejected else ''}"
           f", {n_retry} asked again shorter | speech {args.wps} words/s: {len(over)} lines (yes "
@@ -264,5 +284,10 @@ if __name__ == "__main__":
     p.add_argument("--gap", type=float, default=0.3, help="seconds of silence kept before the next line")
     p.add_argument("--retries", type=int, default=1,
                    help="times the LLM is asked again, shorter, when its answer does not fit the time slot")
+    p.add_argument("--continuous", action="store_true",
+                   help="fill every silence with no-flow lines from the metadata: the commentary never stops (v5.5)")
+    p.add_argument("--fill_llm", action="store_true",
+                   help="--continuous: the FILL lines also go through the LLM (many requests: needs a paid quota)")
+    p.add_argument("--fill_pause", type=float, default=0.7, help="--continuous: seconds between two lines")
     p.add_argument("--out_dir", default=os.path.join("outputs", "no_flow_v2"))
     main(p.parse_args())
