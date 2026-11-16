@@ -19,6 +19,9 @@ New version next to no_flow_llm.py (v1, ElevenLabs, kept unchanged). Differences
   and the clock, and a recap of the goals, cards and changes so far. Topics take turns; nothing is repeated within
   15 minutes until everything has been said. FILL lines are templates (no LLM call: hundreds of lines a match, far
   above the free quota) unless --fill_llm.
+- (v5.9) --llm openai: an OpenAI chat model (--openai_model gpt-4o-mini, key in OPENAI_API_KEY) writes the lines,
+  then tts_v2.py --engine openai (gpt-4o-mini-tts) reads them. --llm_half / --llm_start / --llm_end: the LLM only for
+  the demo part (the other lines stay templates): a continuous match has 1000+ lines.
 
 Output (<out_dir>/<game>/): commentary_timeline.json / .txt (yes + no lines), input of tts_v2.py.
 
@@ -58,8 +61,8 @@ or the LAST EVENT.
 5. Length: one or two sentences, at most 30 words (PHASE welcome and full_time: at most 45 words), and NEVER more \
 words than TIME allows: the next line starts right after yours. When TIME is short, keep the names and the score \
 and drop the rest.
-6. Keep every name, team, number and score of the FACT. Change only the wording, and do not repeat the wording of \
-ALREADY SAID.
+6. Keep every name, team, number, date and score of the FACT. Change only the wording, and do not repeat the wording \
+of ALREADY SAID. Never call a past match the last or previous meeting unless the FACT says so.
 7. Emotion is allowed: excitement for a goal, tension when time is running out. Opinions are not: never judge \
 players, tactics, the referee or who deserves to win.
 8. GENDER women: players are she/her. GENDER men: he/him.
@@ -87,11 +90,21 @@ scorers, or what the result means, or the goodbye."""
 
 BANNED = re.compile(r"\b(morning|afternoon|evening|tonight|weather|sunny|rain\w*|young|veteran|deserv\w*|"
                     r"brilliant|terrible|poor|amazing|incredible|legend\w*|crucial|fantastic|excellent|"
-                    r"superb|impressive|dominant|disappointing)\b", re.I)
+                    r"superb|impressive|dominant|disappointing|key|vital|star|strong|talented|influential|"
+                    r"boasts?)\b", re.I)
+LAST_MEETING = re.compile(r"\b(last|previous|latest|most recent) (encounter|meeting|time they met|clash)", re.I)
 SPLIT_CODES = {"A1", "A2", "A3", "C1", "C1b", "C2", "G1", "G2", "G3", "G4"}
 CAPITAL_OK = {"I", "VAR", "Goal", "Penalty", "Full-time", "Half-time"}
 LONG_PHASES = {"welcome", "full_time"}
 MIN_BUDGET = 6  # a slot shorter than this many words: the answer may still have 6 words (tts_v2.py speeds it up)
+
+
+def clock(value):
+    """'28:00' or '1680' -> seconds in the half; None / '' stays None."""
+    if value in (None, ""):
+        return None
+    parts = [float(x) for x in str(value).split(":")]
+    return parts[0] if len(parts) == 1 else parts[0] * 60 + parts[1]
 
 
 def build_message(ctx, line, last_event, said, gender, budget=None):
@@ -133,6 +146,8 @@ def check(answer, message, fact, phase, budget=None):
         return "number not in the message"
     if BANNED.search(answer):
         return f"banned word '{BANNED.search(answer).group(0)}'"
+    if LAST_MEETING.search(answer) and not LAST_MEETING.search(fact) and "last met" not in fact.lower():
+        return f"banned word '{LAST_MEETING.search(answer).group(0)}'"
     known = message.lower()
     for sentence in re.split(r"(?<=[.!?])\s+", answer):
         for w in re.findall(r"[A-ZÀ-Ý][\w'’-]+", sentence)[1:]:  # capitalised words after the first one
@@ -173,10 +188,25 @@ def main(args):
     llm = None
     if args.llm == "gemini":
         from gemini_client import Gemini, ModelPool, read_key
-        llm = Gemini(read_key(), args.backend, min_interval=60.0 / args.rpm if args.rpm else 0)
+        rpm = 12 if args.rpm is None else args.rpm
+        llm = Gemini(read_key(), args.backend, min_interval=60.0 / rpm if rpm else 0)
         pool = ModelPool(args.llm_model)
         system = SYSTEM_PROMPT.format(language=args.language)
         print(f"Gemini backend {llm.backend}, models (in order) {', '.join(pool.models)}")
+    elif args.llm == "openai":  # (v5.9) gpt-4o-mini writes the lines; tts_v2.py --engine openai reads them
+        from gemini_client import ModelPool, read_key
+        from openai_client import OpenAIChat
+        rpm = 300 if args.rpm is None else args.rpm
+        llm = OpenAIChat(read_key("OPENAI_API_KEY"), min_interval=60.0 / rpm if rpm else 0)
+        pool = ModelPool(args.openai_model)
+        system = SYSTEM_PROMPT.format(language=args.language)
+        print(f"OpenAI LLM {', '.join(pool.models)}")
+    t0, t1 = clock(args.llm_start), clock(args.llm_end)
+
+    def llm_here(line):  # --llm_half / --llm_start / --llm_end: the LLM only for the demo part (the rest: templates)
+        if args.llm_half and line.half != args.llm_half:
+            return False
+        return (t0 is None or line.second >= t0) and (t1 is None or line.second < t1)
 
     def budget_of(slot, phase):  # words that fit in the slot, at most the length rule (30, welcome / full_time 45)
         return min(max_words(slot), 45 if phase in LONG_PHASES else 30)
@@ -195,7 +225,7 @@ def main(args):
         budget = budget_of(line.slot, line.phase)
         message = build_message(ctx, line, before[-1] if before else None, said[-args.history:], ctx.gender, budget)
         text, used = line.text, "template"
-        if llm and pool.current and (line.code != "FILL" or args.fill_llm):
+        if llm and pool.current and (line.code != "FILL" or args.fill_llm) and llm_here(line):
             ask = message
             for attempt in range(1 + args.retries):
                 model = None
@@ -204,7 +234,7 @@ def main(args):
                     model = pool.current
                 except Exception as e:  # network / no quota left: keep the template line
                     answer = ""
-                    print(f"  Gemini error: {str(e)[:160]}")
+                    print(f"  LLM error: {str(e)[:160]}")
                 reason = check(answer, message, line.text, line.phase, budget) if model else "no answer"
                 if not reason or not reason.startswith("too long") or attempt == args.retries:
                     break
@@ -235,7 +265,7 @@ def main(args):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "commentary_timeline.json"), "w", encoding="utf-8") as f:
         json.dump({"game": game, "script": "2.0", "events_source": source, "llm": args.llm,
-                   "llm_model": args.llm_model if llm else None, "half_lengths": half_lens, "gender": ctx.gender,
+                   "llm_model": (args.openai_model if args.llm == "openai" else args.llm_model) if llm else None, "half_lengths": half_lens, "gender": ctx.gender,
                    "wps": args.wps, "gap": args.gap, "comments": timeline}, f, indent=2, ensure_ascii=False)
     with open(os.path.join(out_dir, "commentary_timeline.txt"), "w", encoding="utf-8") as f:
         for c in timeline:
@@ -269,11 +299,18 @@ if __name__ == "__main__":
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--yes_events", help="results_dense_captioning.json of the yes flow (infer_match.py)")
     src.add_argument("--events_from_fifa", action="store_true", help="stand-in: FIFA events.csv as the events")
-    p.add_argument("--llm", choices=["gemini", "template"], default="gemini")
+    p.add_argument("--llm", choices=["gemini", "openai", "template"], default="gemini",
+                   help="gemini | openai (v5.9: OpenAI chat model, key in OPENAI_API_KEY) | template (no LLM)")
+    p.add_argument("--openai_model", default="gpt-4o-mini", help="--llm openai: chat model that writes the lines")
+    p.add_argument("--llm_half", type=int, default=0, help="the LLM only for lines of this half (0 = both)")
+    p.add_argument("--llm_start", default=None, help="the LLM only from this time of the half (MM:SS), e.g. the "
+                                                   "demo part; the other lines stay templates (saves time and cost)")
+    p.add_argument("--llm_end", default=None, help="... to this time (MM:SS)")
     p.add_argument("--llm_model", default="gemini-2.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash-lite",
                    help="models tried in order: the next one is used when a model has no quota left")
     p.add_argument("--backend", choices=["auto", "gemini", "vertex"], default="auto")
-    p.add_argument("--rpm", type=float, default=12, help="max Gemini requests per minute (free tier limits)")
+    p.add_argument("--rpm", type=float, default=None,
+                   help="max LLM requests per minute (default: gemini 12 for the free tier, openai 300)")
     p.add_argument("--temperature", type=float, default=0.7)
     p.add_argument("--language", default="English")
     p.add_argument("--history", type=int, default=3, help="previous lines shown to the LLM to avoid repeats")

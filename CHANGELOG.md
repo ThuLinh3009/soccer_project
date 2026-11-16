@@ -3,6 +3,18 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v5.9 (2026-11-16)
+Luồng NO: LLM **`gpt-4o-mini`** viết câu bình luận, **`gpt-4o-mini-tts`** đọc. Dùng chung một key OpenAI.
+
+- `openai_client.py` (mới): gọi chat model của OpenAI qua REST, không cần SDK. Key lấy từ `OPENAI_API_KEY`. Lỗi 429/5xx thì thử lại; key sai hoặc hết tiền thì dừng gọi LLM, các câu còn lại dùng khuôn. `python openai_client.py --check` để kiểm tra key.
+- `no_flow_v2.py`:
+  - `--llm openai --openai_model gpt-4o-mini`. Prompt và các bước kiểm tra giống Gemini (đúng số, đúng tên, vừa thời gian trống, không lời khen chê).
+  - `--rpm` mặc định: Gemini 12, OpenAI 300.
+  - `--llm_half`, `--llm_start`, `--llm_end`: chỉ gọi LLM cho đoạn demo, các câu khác dùng khuôn (chế độ liên tục có hơn 1000 câu mỗi trận).
+  - Kiểm tra chặt hơn. Thêm từ cấm: key, vital, star, strong, talented, influential, boast. Câu tự gọi một trận cũ là "last meeting / last encounter" mà dữ liệu không nói vậy thì bị loại. Prompt thêm luật tương ứng.
+- Notebook `colab_test_pipeline_v5.9`, cell 2: `NO_LLM = "openai"` (hoặc `"gemini"` / `"template"`), `OPENAI_LLM_MODEL = "gpt-4o-mini"`, `LLM_DEMO_ONLY = True`, `FILL_LLM = True`. Cell 10 đọc secret `OPENAI_API_KEY` và kiểm tra key trước khi chạy; cell 12 dùng lại key đó.
+- Chạy thật trên máy local, trận Chelsea, đoạn 28:00–38:00 hiệp 1 (dùng sự kiện FIFA thay luồng YES): `gpt-4o-mini` viết 103/111 câu NO trong khoảng 1 phút. 8 câu bị loại (khen chê, "last meeting") và dùng khuôn; 16 câu quá dài được hỏi lại ngắn hơn. `gpt-4o-mini-tts` đọc 117 câu, 0 lỗi: 80% thời gian có lời nói, khoảng nghỉ dài nhất 2,1 giây, câu YES lệch 0 giây, 12 câu được tăng tốc nhẹ.
+
 ## v5.8 (2026-11-16)
 Notebook test: luồng NO không dùng ElevenLabs nữa. Giọng đọc của cả hai luồng là OpenAI `gpt-4o-mini-tts`. Chỉ sửa notebook, code Python giữ nguyên.
 
