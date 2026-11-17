@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v6.0 (2026-11-17)
+Notebook test: chỉ chạy trận Chelsea – Man City, cả hiệp 1. Code Python giữ nguyên.
+
+- Cell 2: `TEST_GAMES = ["2025-09-05 - Chelsea 2 - 1 Manchester City"]`. Cell 3 chỉ giữ các trận trong danh sách này, nên mọi cell sau (TimeSformer, luồng YES, luồng NO, giọng đọc) chỉ chạy trận Chelsea. `[]` = mọi trận trên Drive. Trận Brazil – Norway để test sau.
+- Đoạn demo mặc định là cả hiệp 1: `DEMO_HALF = 1`, `DEMO_START, DEMO_END = "00:00", ""`. Cell 10 gọi `gpt-4o-mini` cho cả hiệp 1 (khoảng 540 câu NO), cell 12 đọc cả hiệp 1 bằng `gpt-4o-mini-tts` và ghép vào video.
+
 ## v5.9 (2026-11-16)
 Luồng NO: LLM **`gpt-4o-mini`** viết câu bình luận, **`gpt-4o-mini-tts`** đọc. Dùng chung một key OpenAI.
 
