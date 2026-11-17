@@ -892,8 +892,13 @@ class Filler:
         order = sorted(self.ORDER, key=lambda c: self.last_cat[c])  # the topic said longest ago first
         if prefer:
             order = ["stats"] + order
+        # (v6.1) FIFA gives only the minute of a goal (31' = some time in 30:00-30:59, written as 31:00): in the minute
+        # before it the goal may already be in the video, so the score is not said there
+        goal_soon = any(g.half == half and 0 < g.second - second <= 60 for g in self.ctx.goals)
         for cat in dict.fromkeys(order):
             if now - self.last_cat[cat] < self.COOLDOWN[cat] and not (cat == "stats" and prefer):
+                continue
+            if cat == "score" and goal_soon:
                 continue
             text = self._pick_cat(cat, half, second, budget, half_len, now, prefer)
             if text:

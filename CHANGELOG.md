@@ -3,6 +3,13 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v6.1 (2026-11-17)
+- `script_v2.py`: câu lấp khoảng lặng không nhắc tỉ số trong 60 giây trước một bàn thắng. FIFA chỉ ghi phút: bàn "31'" xảy ra trong khoảng 30:00–30:59 nhưng được ghi là 31:00. Lần chạy thử cả hiệp 1 có câu *"We're still goalless…"* lúc 30:53, khi bàn thắng có thể đã có trong video.
+- Chạy thử cả hiệp 1 trận Chelsea trên máy local, đúng luồng của notebook (dùng sự kiện FIFA thay luồng YES):
+  - `gpt-4o-mini` viết 497 câu NO trong 11,5 phút; 29 câu bị loại và dùng khuôn (22 có từ khen chê như "strong form", 7 quá dài); 65 câu được hỏi lại ngắn hơn.
+  - `gpt-4o-mini-tts` đọc 540 câu trong 10 phút, 0 lỗi. 83% thời gian có lời nói, khoảng nghỉ dài nhất 2,7 giây, câu YES lệch 0 giây, câu NO lùi tối đa 9,5 giây so với kịch bản, 22 câu được tăng tốc (tối đa 1,25 lần).
+  - Bàn thắng phút 31: sự kiện lúc 31:00, câu báo bàn thắng của luồng NO lúc 31:05–31:13.
+
 ## v6.0 (2026-11-17)
 Notebook test: chỉ chạy trận Chelsea – Man City, cả hiệp 1. Code Python giữ nguyên.
 
