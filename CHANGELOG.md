@@ -3,6 +3,13 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v6.2 (2026-11-17)
+Giọng đọc hào hùng hơn, hợp với bóng đá.
+
+- `tts_v2.py`: `--openai_style epic` (mặc định mới) dặn `gpt-4o-mini-tts` đọc như bình luận viên Anh ở trận lớn: câu sự kiện dồn dập, bàn thắng gào lên ("Goal" kéo dài), dẫn chương trình giọng trầm, uy, có không khí trận đấu. `--openai_style calm` là cách đọc nhẹ nhàng của v5.6. Mỗi phần thay riêng được bằng `--openai_style_yes`, `--openai_style_goal`, `--openai_style_no`.
+- `voice_samples.py` (mới): mỗi giọng OpenAI một file wav, cùng đọc 3 câu (sự kiện, bàn thắng, dẫn chương trình), để nghe rồi chọn giọng. Đã tạo đủ 13 giọng kiểu epic (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar), cùng ash và onyx kiểu calm để so sánh. Tốc độ đọc hai kiểu gần như nhau, nên timeline không phải đổi.
+- Notebook `colab_test_pipeline_v6.2`, cell 2: `OPENAI_STYLE = "epic"`. Đổi giọng hoặc cách đọc thì cell 12 đọc lại các câu từ đầu (clip cũ không dùng lại được).
+
 ## v6.1 (2026-11-17)
 - `script_v2.py`: câu lấp khoảng lặng không nhắc tỉ số trong 60 giây trước một bàn thắng. FIFA chỉ ghi phút: bàn "31'" xảy ra trong khoảng 30:00–30:59 nhưng được ghi là 31:00. Lần chạy thử cả hiệp 1 có câu *"We're still goalless…"* lúc 30:53, khi bàn thắng có thể đã có trong video.
 - Chạy thử cả hiệp 1 trận Chelsea trên máy local, đúng luồng của notebook (dùng sự kiện FIFA thay luồng YES):

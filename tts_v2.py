@@ -29,7 +29,9 @@ Engines (v5.2), --engine:
   --python 3.12`), `pip install "kokoro>=0.9.4" soundfile`, `python -m spacy download en_core_web_sm`, espeak-ng.
   Voices --kokoro_voice_yes / --kokoro_voice_no (first letter: a = American, b = British English).
 - openai (v5.6): OpenAI TTS API, default model gpt-4o-mini-tts, voices --openai_voice_yes ash (play-by-play) /
-  --openai_voice_no onyx (presenter); the speaking style is given as `instructions` (goal: excited). Key: the
+  --openai_voice_no onyx (presenter); the speaking style is given as `instructions` (goal: excited; v6.2:
+  --openai_style epic (default, big-match heroic) or calm, --openai_style_yes/_goal/_no to write your own;
+  voice_samples.py makes one sample per voice to choose from). Key: the
   OPENAI_API_KEY environment variable (Colab: Secrets), never written to a file. Paid per character.
 
 Demo part (v5.2): --start MM:SS --end MM:SS (time in the half) speaks only the lines of that part and also writes
@@ -178,7 +180,7 @@ def cut_video(src, out, start, end):
                    check=True)
 
 
-OPENAI_STYLE = {
+OPENAI_STYLE_CALM = {  # v5.6 styles (--openai_style calm)
     "yes": "Live football play-by-play commentator on TV. Energetic, quick and clear, following the action as it "
            "happens. English accent of a sports broadcaster.",
     "goal": "Football commentator celebrating a goal live on TV: very excited, loud, rising energy, but every name "
@@ -186,6 +188,15 @@ OPENAI_STYLE = {
     "no": "Lead TV football presenter during a live match: warm, confident and conversational, brisk pace with no "
           "long pauses, like filling a quiet moment of the game for the viewers.",
 }
+OPENAI_STYLE_EPIC = {  # (v6.2, default) --openai_style epic: big-match British TV commentary
+    "yes": "Passionate British TV football commentator calling a big live match. High energy and urgency, punchy and "
+           "fast, voice rising as the play develops, every word ringing with excitement, like a cup final.",
+    "goal": "Football commentator erupting for a goal in a packed stadium: explosive, roaring, euphoric, voice at full "
+            "power and climbing, stretch the word Goal, pure joy and drama, but every name still clear.",
+    "no": "Lead commentator of a big live football broadcast: rich, commanding, heroic voice with a real sense of "
+          "occasion and drama, energetic and brisk with no long pauses, building anticipation for every moment.",
+}
+OPENAI_STYLE = dict(OPENAI_STYLE_EPIC)  # used by the code below; main() sets it from --openai_style / --openai_style_*
 
 
 def style_key(c):
@@ -271,7 +282,17 @@ def mux(video, wav, out, original_volume):
     subprocess.run(cmd, check=True)
 
 
+def set_openai_style(args):
+    """(v6.2) speaking style of the OpenAI voice: --openai_style epic | calm, each part replaceable."""
+    OPENAI_STYLE.clear()
+    OPENAI_STYLE.update(OPENAI_STYLE_CALM if getattr(args, "openai_style", "epic") == "calm" else OPENAI_STYLE_EPIC)
+    for k in ("yes", "goal", "no"):
+        if getattr(args, f"openai_style_{k}", None):
+            OPENAI_STYLE[k] = getattr(args, f"openai_style_{k}")
+
+
 def main(args):
+    set_openai_style(args)
     data = json.load(open(args.timeline, encoding="utf-8"))
     half_lens = data.get("half_lengths") or [3600, 3600]
     out_dir = args.out_dir or os.path.join(os.path.dirname(args.timeline), "audio")
@@ -462,6 +483,12 @@ if __name__ == "__main__":
     p.add_argument("--openai_model", default="gpt-4o-mini-tts", help="OpenAI TTS model")
     p.add_argument("--openai_voice_yes", default="ash", help="OpenAI voice of the yes lines (play-by-play)")
     p.add_argument("--openai_voice_no", default="onyx", help="OpenAI voice of the no lines (presenter)")
+    p.add_argument("--openai_style", choices=["epic", "calm"], default="epic",
+                   help="(v6.2) how the OpenAI voices speak: epic = big-match, heroic TV commentary (default); "
+                        "calm = the v5.6 style")
+    p.add_argument("--openai_style_yes", default=None, help="own speaking instructions for the yes lines")
+    p.add_argument("--openai_style_goal", default=None, help="own speaking instructions for a goal line")
+    p.add_argument("--openai_style_no", default=None, help="own speaking instructions for the no lines")
     p.add_argument("--kokoro_voice_yes", default="am_michael", help="Kokoro voice of the yes lines")
     p.add_argument("--kokoro_voice_no", default="bm_george", help="Kokoro voice of the no lines")
     p.add_argument("--speed_yes", type=float, default=1.1, help="Kokoro speaking speed of the yes lines")
