@@ -3,6 +3,31 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.0 (2026-11-18)
+Sắp xếp lại thư mục. Code chỉ đổi chỗ, cách chạy không đổi kết quả.
+
+- Code chia theo vai trò (sơ đồ trong `README.md`):
+  - `deltalab/`: model, train, infer, luồng YES;
+  - `features/`: video → npy;
+  - `crawler/`: metadata và website crawl;
+  - `commentary/`: luồng NO;
+  - `voice/`: TTS;
+  - `clients/`: OpenAI, Gemini;
+  - `evaluation/`;
+  - `notebooks/`;
+  - `docs/`: HUONG_DAN, NO_FLOW_SCRIPT, assets.
+- `models/`, `dataset/`, `metadata/`, `outputs/` vẫn là thư mục dữ liệu, không đưa lên GitHub. `models/` tiếp tục chứa checkpoint, nên code model nằm ở `deltalab/`.
+- **Cách chạy mới:** luôn chạy từ thư mục gốc repo, dạng `python -m <thư mục>.<file>`. Ví dụ `python fifa_crawl.py` thành `python -m crawler.fifa_crawl`, và `python crawl_web.py --open` thành `python -m crawler.crawl_web --open`.
+  - Tất cả notebook đã đổi sẵn: `run(["python", "-m", "deltalab.infer_match", ...])`; Kokoro dùng `KOKORO_PY -m voice.tts_v2`.
+  - Import trong code đổi thành `from deltalab.dataset import ...`, `from clients.gemini_client import ...`.
+- Checkpoint `.pth.tar` và mapper `.pt` trên Drive vẫn dùng được, vì chúng chỉ lưu tensor, không lưu đường dẫn module.
+- Notebook nằm trong `notebooks/`, nên link Colab đổi thành `.../blob/main/notebooks/colab_test_pipeline_v7.0.ipynb`.
+- Đã chạy thử local:
+  - Mọi module có giao diện dòng lệnh đều chạy được `python -m ... --help`. Các module của `deltalab` được kiểm tra với thư viện giả, vì máy local không có `wandb` và `sklearn`.
+  - Luồng NO với câu khuôn trên trận Chelsea cho ra 1153 câu cho cả 2 hiệp.
+  - venv Kokoro chạy được `-m voice.tts_v2`.
+  - Website crawl trận chung kết World Cup 2026 Spain – Argentina, lưu vào `metadata/fifa`.
+
 ## v6.4 (2026-11-18)
 - `fifa_crawl.py`: khi không tìm thấy trận trong mùa giải đã nhập, crawler tìm các trận của hai đội đó trong khoảng 2 năm trước và sau, ở mọi giải (tối đa 6 trận). Thông báo lỗi kèm năm cần nhập cho từng trận. Ví dụ: Brazil – Norway, nhập năm 2025 → gợi ý "2026-07-05 FIFA World Cup 2026: Brazil 1 - 2 Norway → năm 2026".
 - `crawl_web.py`: các trận gợi ý hiện thành nút. Bấm vào thì trang tự điền năm và tên giải rồi tìm lại.

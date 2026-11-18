@@ -1,6 +1,37 @@
 # SoccerNet 2024 - Dense Video Captioning
 
-> **Hướng dẫn tiếng Việt cho dự án AI bình luận bóng đá (cài đặt, train, test pipeline YES/NO): xem [HUONG_DAN.md](HUONG_DAN.md).**
+> **Hướng dẫn tiếng Việt cho dự án AI bình luận bóng đá (cài đặt, train, test pipeline YES/NO): xem [HUONG_DAN.md](docs/HUONG_DAN.md).**
+
+## Cấu trúc thư mục (v7.0)
+```
+soccer_project/
+├── deltalab/      model DeLTA Lab (QFormer + GPT-2), luồng YES: train (main.py), chỉnh NMS/top-k (retune.py),
+│                  chạy trên một trận (infer_match.py); dataset, model, model_gpt, gpt, netvlad, loss, train, utils
+├── features/      video → npy: cut_halves.py (cắt hiệp), timesformer_extract.py (768 chiều),
+│                  feature_mapper.py (768 → 8576 kiểu Baidu), download_subset.py (tải SoccerNet)
+├── crawler/       metadata trận đấu: fifa_crawl.py, crawl_web.py (website crawl), football_data.py, match_facts.py
+├── commentary/    luồng NO: script_v2.py (luật kịch bản), no_flow_v2.py (LLM viết câu), no_flow_llm.py (bản v1),
+│                  commentary_timeline.py (xếp câu lên timeline)
+├── voice/         đọc thành tiếng: tts_v2.py (OpenAI / Gemini / Kokoro), voice_samples.py (nghe thử giọng)
+├── clients/       gọi API: openai_client.py, gemini_client.py (key chỉ lấy từ biến môi trường)
+├── evaluation/    eval_vs_fifa.py (so sự kiện luồng YES với FIFA)
+├── notebooks/     notebook Colab / Kaggle (colab_test_pipeline, colab_video2caption, colab_video2npy, colab_run, kaggle_run)
+├── docs/          HUONG_DAN.md, NO_FLOW_SCRIPT.md, assets/
+├── CHANGELOG.md
+│   (không đưa lên GitHub, xem .gitignore)
+├── models/        checkpoint đã train: models/<tên model>/{spotting,caption}/model.pth.tar
+├── dataset/       dữ liệu SoccerNet (npy, nhãn)
+├── metadata/      kết quả crawl (metadata/fifa/<trận>/*.csv)
+└── outputs/       kết quả chạy (timeline, audio...)
+```
+**Luôn chạy từ thư mục gốc repo**, dạng `python -m <thư mục>.<file>` (không có `.py`), ví dụ:
+```sh
+python -m crawler.crawl_web --open                 # website crawl metadata
+python -m crawler.fifa_crawl --season 2025 --team_a Chelsea --team_b "Manchester City"
+python -m deltalab.main --SoccerNet_path dataset/caption-2024 --model_name gpt2-video60-mlp ...
+python -m commentary.no_flow_v2 --metadata metadata/fifa/<trận> --events_from_fifa --llm openai ...
+python -m voice.tts_v2 --timeline <commentary_timeline.json> --engine openai ...
+```
 
 ## Introduction
 This repository contains the code and models for our SoccerNet 2024 Dense Video Captioning submission from [DeLTA Lab](https://sites.google.com/view/jmkang/about-our-lab). The project leverages a BLIP-2 like architecture with GPT-2 model as a language model.
@@ -38,7 +69,7 @@ We adapted a framework similar to the BLIP-2 model with the following components
     # only additional package is tiktoken and transformers used for GPT-2
     pip install tiktoken transformers
 
-    # test pipeline: cut_halves.py (PyAV) and the no flow with the ElevenLabs LLM (no_flow_llm.py)
+    # test pipeline: features/cut_halves.py (PyAV) and the no flow with the ElevenLabs LLM (commentary/no_flow_llm.py)
     pip install av websockets
     ```
 
@@ -57,14 +88,14 @@ mySNdl.downloadDataTask(task="caption-2024", split=["train","valid", "test","cha
 
 ## Train the model
 ```bash
-python main.py --SoccerNet_path=path/to/SoccerNet/  \
+python -m deltalab.main --SoccerNet_path=path/to/SoccerNet/  \
 --model_name gpt2-train \
 --GPU 0 \
 --pool QFormer \
 --gpt_type gpt2 \
 --NMS_threshold 0.7
 ```
-Replace `path/to/SoccerNet` with the local path for Soccernet dataset's `caption-2024` folder. Other options are listed in `main.py`. The results should be around 26 in METEOR.
+Replace `path/to/SoccerNet` with the local path for Soccernet dataset's `caption-2024` folder. Other options are listed in `deltalab/main.py`. The results should be around 26 in METEOR.
 
 |                  | Bleu_1  | Bleu_2  | Bleu_3  | Bleu_4  | CIDEr  | METEOR  |
 |------------------|---------|---------|---------|---------|--------|---------|
