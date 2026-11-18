@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.2 (2026-11-19)
+- `crawler/fifa_crawl.py`: API FIFA có lúc ngừng trả lời vài giây (lỗi timeout WinError 10060). Trước đây chỉ cần một request hồ sơ cầu thủ hỏng là cả lần crawl dừng.
+  - `get()` giờ thử lại 5 lần, chờ 3, 6, 9, 12 giây giữa các lần; timeout mỗi request là 20 giây.
+  - Hồ sơ cầu thủ, HLV, đội, mùa giải, giải đấu gọi qua `get_optional()`: nếu vẫn lỗi thì in "bỏ qua ..." và để trống các cột đó, phần còn lại vẫn crawl đủ.
+- Đã chạy thử local: crawl Brazil – Norway (World Cup 2026) đủ 50 cầu thủ có hồ sơ, 81 sự kiện, 3 bàn.
+
 ## v7.1 (2026-11-18)
 - Đổi tên thư mục `clients/` thành **`api/`** cho dễ hiểu. Thư mục này chứa phần gọi API bên ngoài: `api/openai_client.py`, `api/gemini_client.py`.
   - Lệnh kiểm tra key: `python -m api.openai_client --check`, `python -m api.gemini_client --check`.

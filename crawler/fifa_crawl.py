@@ -59,25 +59,39 @@ class CrawlError(Exception):
 
 
 # ----------------------------------------------------------------------------- API
+RETRIES = 5
+
+
 def get(path, **params):
+    """GET one API path. The API sometimes stops answering for a few seconds, so wait and try again
+    (3, 6, 9, 12 s) before giving up."""
     params.setdefault("language", "en")
     url = f"{API}/{path}?{urllib.parse.urlencode(params)}"
-    for attempt in range(3):
+    for attempt in range(RETRIES):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=20) as r:
                 body = r.read().decode("utf-8")
             time.sleep(0.2)  # be polite
             return json.loads(body) if body.strip() not in ("", "null") else None
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
-            if attempt == 2:
+            if attempt == RETRIES - 1:
                 raise
-        except (urllib.error.URLError, TimeoutError):
-            if attempt == 2:
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == RETRIES - 1:
                 raise
-        time.sleep(2 * (attempt + 1))
+        time.sleep(3 * (attempt + 1))
+
+
+def get_optional(path, **params):
+    """Like get(), but extra data (profiles) must not stop the crawl: None when the API keeps failing."""
+    try:
+        return get(path, **params)
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        print(f"    bỏ qua {path}: {e}")
+        return None
 
 
 def txt(localized):
@@ -235,7 +249,7 @@ def age_at(birth, when):
 
 
 def player_profile(id_player, kickoff):
-    d = get(f"players/{id_player}") or {}
+    d = get_optional(f"players/{id_player}") or {}
     foot = d.get("PreferredFoot")
     return {"birth_date": (d.get("BirthDate") or "")[:10], "age": age_at(d.get("BirthDate"), kickoff),
             "height_cm": d.get("Height") or "", "weight_kg": d.get("Weight") or "", "birth_place": d.get("BirthPlace") or "",
@@ -246,7 +260,7 @@ def player_profile(id_player, kickoff):
 
 
 def team_profile(t):
-    d = get(f"teams/{t['IdTeam']}") or {}
+    d = get_optional(f"teams/{t['IdTeam']}") or {}
     return {"abbreviation": t.get("Abbreviation") or d.get("Abbreviation") or "",
             "short_name": t.get("ShortClubName") or d.get("ShortClubName") or "", "founded": d.get("FoundationYear") or "",
             "city": d.get("City") or "", "address": d.get("Street") or "", "country": d.get("IdCountry") or "",
@@ -312,11 +326,11 @@ def crawl_match(m, args, log=print):
         coach_ids = {pretty(txt(c["Name"])): c.get("IdCoach") for t in (home_t, away_t) for c in t.get("Coaches") or []}
         for s in staff:
             if s["name"] in coach_ids and coach_ids[s["name"]]:
-                d = get(f"coaches/{coach_ids[s['name']]}") or {}
+                d = get_optional(f"coaches/{coach_ids[s['name']]}") or {}
                 s.update({"birth_date": (d.get("BirthDate") or "")[:10], "age": age_at(d.get("BirthDate"), kickoff)})
         for row, t in zip(teams, (home_t, away_t)):
             row.update(team_profile(t))
-        season_d, comp_d = get(f"seasons/{m['IdSeason']}") or {}, get(f"competitions/{m['IdCompetition']}") or {}
+        season_d, comp_d = get_optional(f"seasons/{m['IdSeason']}") or {}, get_optional(f"competitions/{m['IdCompetition']}") or {}
     # goals with assist: the live feed may use Stats Perform ids for some players
     by_id = {p["id_player"]: p for p in players}
     by_id.update({p["id_statsperform"]: p for p in players if p.get("id_statsperform")})
