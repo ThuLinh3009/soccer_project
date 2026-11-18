@@ -5,7 +5,7 @@ never written to a file. Same interface as gemini_client.Gemini.text(), so comme
 raised as gemini_client.GeminiError so that ModelPool stops when the key is refused or there is no credit left.
 
 usage (check the key):
-    python -m clients.openai_client --check
+    python -m api.openai_client --check
 """
 import json
 import time
@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from argparse import ArgumentParser
 
-from clients.gemini_client import GeminiError, read_key
+from api.gemini_client import GeminiError, read_key
 
 CHAT_URL = "https://api.openai.com/v1/chat/completions"
 RETRY_STATUS = {429, 500, 502, 503, 504}

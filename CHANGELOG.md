@@ -3,6 +3,12 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.1 (2026-11-18)
+- Đổi tên thư mục `clients/` thành **`api/`** cho dễ hiểu. Thư mục này chứa phần gọi API bên ngoài: `api/openai_client.py`, `api/gemini_client.py`.
+  - Lệnh kiểm tra key: `python -m api.openai_client --check`, `python -m api.gemini_client --check`.
+  - Import trong `commentary/no_flow_v2.py`, `voice/tts_v2.py`, `voice/voice_samples.py`, các notebook và tài liệu đã đổi theo.
+- Đã chạy thử local: các lệnh `--help` chạy được; luồng NO `--llm openai` import được `api.openai_client` và dừng đúng chỗ báo thiếu `OPENAI_API_KEY`; venv Kokoro chạy được `-m voice.tts_v2`.
+
 ## v7.0 (2026-11-18)
 Sắp xếp lại thư mục. Code chỉ đổi chỗ, cách chạy không đổi kết quả.
 

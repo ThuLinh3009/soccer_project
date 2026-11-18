@@ -11,7 +11,7 @@ the Interactions API. Audio is 16-bit mono PCM, 24 kHz, saved as wav.
 There is no "gemini-2.5-flash-lite" TTS model: the Flash-Lite TTS model is gemini-3.8-flash-lite-tts (default).
 
 usage (check the key and list the models it can use):
-    python -m clients.gemini_client --check
+    python -m api.gemini_client --check
 """
 import base64
 import json

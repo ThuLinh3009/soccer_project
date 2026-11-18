@@ -382,6 +382,6 @@ YOUR LINE:
 | `commentary/script_v2.py` | Biến ở mục 1, khuôn câu ở mục 2 (có điều kiện, chọn biến thể, bỏ khuôn thiếu biến), xếp lịch theo mục 3 |
 | `commentary/no_flow_v2.py` | System prompt mục 4, tin nhắn mục 5, kiểm tra câu theo mục 3.7. LLM: Gemini |
 | `voice/tts_v2.py` | Đọc thành giọng (Gemini TTS), 2 giọng, ghép audio từng hiệp, lồng vào video |
-| `clients/gemini_client.py` | Gọi Gemini (REST); tự chuyển model khi model trước hết quota |
+| `api/gemini_client.py` | Gọi Gemini (REST); tự chuyển model khi model trước hết quota |
 
 Chưa làm: hiệp phụ sau H1 và luân lưu (giai đoạn I), vì video chỉ có 2 hiệp chính.

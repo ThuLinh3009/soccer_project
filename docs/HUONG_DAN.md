@@ -195,7 +195,7 @@ Bản mới, chạy song song với bản ElevenLabs (code cũ giữ nguyên):
 | `commentary/script_v2.py` | Kịch bản 2.0 (`NO_FLOW_SCRIPT.md`): biến từ metadata, khuôn câu, xếp lịch câu bắt buộc + thông tin nền |
 | `commentary/no_flow_v2.py` | Gemini nói lại từng câu của kịch bản; kiểm tra số, tên, độ dài, từ cấm; lỗi thì dùng khuôn câu |
 | `voice/tts_v2.py` | Gemini TTS: mỗi câu thành wav (có cache), ghép theo thời điểm thành audio từng hiệp, lồng vào video |
-| `clients/gemini_client.py` | Gọi Gemini bằng REST (không cần SDK). `python -m clients.gemini_client --check`: kiểm tra key, liệt kê model |
+| `api/gemini_client.py` | Gọi Gemini bằng REST (không cần SDK). `python -m api.gemini_client --check`: kiểm tra key, liệt kê model |
 
 Model mặc định (danh sách thử lần lượt: model trước **hết quota** thì tự chuyển sang model sau):
 - Viết câu: `gemini-2.5-flash-lite` → `gemini-3.1-flash-lite` → `gemini-3.5-flash-lite`. Gói miễn phí của `gemini-2.5-flash-lite` chỉ cho **20 lượt gọi**; một trận cần khoảng 40–60 câu NO.
@@ -241,7 +241,7 @@ LLM chạy qua **ElevenLabs Agents** ở chế độ chỉ văn bản (WebSocket
 | `features/cut_halves.py` | Cắt video full trận thành 2 hiệp |
 | `crawler/fifa_crawl.py` | Crawl metadata FIFA → CSV + `facts.csv` |
 | `commentary/no_flow_llm.py` | Luồng NO v1 với LLM ElevenLabs |
-| `commentary/script_v2.py`, `commentary/no_flow_v2.py`, `voice/tts_v2.py`, `clients/gemini_client.py` | Luồng NO v2 (kịch bản 2.0 + Gemini) và giọng đọc Gemini TTS |
+| `commentary/script_v2.py`, `commentary/no_flow_v2.py`, `voice/tts_v2.py`, `api/gemini_client.py` | Luồng NO v2 (kịch bản 2.0 + Gemini) và giọng đọc Gemini TTS |
 | `NO_FLOW_SCRIPT.md` | Kịch bản bình luận 2.0 và system prompt |
 | `commentary/commentary_timeline.py`, `crawler/match_facts.py`, `crawler/football_data.py` | Xếp lịch câu nền; luồng NO cũ dùng câu mẫu từ metadata SoccerNet |
 | `colab_video2caption_vX.Y.ipynb` | Notebook train (giai đoạn 1) |
@@ -257,7 +257,7 @@ LLM chạy qua **ElevenLabs Agents** ở chế độ chỉ văn bản (WebSocket
 |---|---|
 | `HTTP 401 Invalid API key` | Key sai, đã xoá, hoặc dán thiếu. Tạo key mới, dán lại vào secret `ELEVENLABS_API_KEY`, bật quyền truy cập |
 | Gemini `HTTP 429` / `RESOURCE_EXHAUSTED` | Chạm giới hạn miễn phí (số lần gọi mỗi phút / mỗi ngày). Code tự chờ rồi thử lại; hết quota ngày thì `voice/tts_v2.py` dừng và giữ các câu đã đọc, hôm sau chạy tiếp. Giảm `--rpm` hoặc `TTS_MAX_LINES` |
-| Gemini `HTTP 404 ... is not found` | Sai tên model. Chạy `python -m clients.gemini_client --check` để xem các model key dùng được |
+| Gemini `HTTP 404 ... is not found` | Sai tên model. Chạy `python -m api.gemini_client --check` để xem các model key dùng được |
 | `This request exceeds your quota limit` | Hết credit ElevenLabs hoặc chạm hạn mức của key. Xem trang Usage; giảm số trận bằng `NO_FLOW_GAMES` |
 | `⚠️ không đọc được secret` | Chưa tạo secret hoặc chưa bật quyền truy cập cho notebook |
 | Luồng YES bắt được ít sự kiện | Hạ `NMS_THRESHOLD` xuống 0.3 rồi chạy lại cell 7. Video mới khác dữ liệu train (năm, đồ hoạ, bóng đá nữ) nên model kém tự tin hơn |

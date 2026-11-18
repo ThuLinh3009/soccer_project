@@ -187,15 +187,15 @@ def main(args):
 
     llm = None
     if args.llm == "gemini":
-        from clients.gemini_client import Gemini, ModelPool, read_key
+        from api.gemini_client import Gemini, ModelPool, read_key
         rpm = 12 if args.rpm is None else args.rpm
         llm = Gemini(read_key(), args.backend, min_interval=60.0 / rpm if rpm else 0)
         pool = ModelPool(args.llm_model)
         system = SYSTEM_PROMPT.format(language=args.language)
         print(f"Gemini backend {llm.backend}, models (in order) {', '.join(pool.models)}")
     elif args.llm == "openai":  # (v5.9) gpt-4o-mini writes the lines; voice/tts_v2.py --engine openai reads them
-        from clients.gemini_client import ModelPool, read_key
-        from clients.openai_client import OpenAIChat
+        from api.gemini_client import ModelPool, read_key
+        from api.openai_client import OpenAIChat
         rpm = 300 if args.rpm is None else args.rpm
         llm = OpenAIChat(read_key("OPENAI_API_KEY"), min_interval=60.0 / rpm if rpm else 0)
         pool = ModelPool(args.openai_model)

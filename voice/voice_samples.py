@@ -13,7 +13,7 @@ from argparse import ArgumentParser, Namespace
 import numpy as np
 
 from voice import tts_v2
-from clients.gemini_client import save_wav
+from api.gemini_client import save_wav
 
 VOICES = "alloy,ash,ballad,coral,echo,fable,nova,onyx,sage,shimmer,verse,marin,cedar"
 LINES = [  # (style, text): lines of the Chelsea - Manchester City timeline

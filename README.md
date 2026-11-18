@@ -13,7 +13,7 @@ soccer_project/
 ├── commentary/    luồng NO: script_v2.py (luật kịch bản), no_flow_v2.py (LLM viết câu), no_flow_llm.py (bản v1),
 │                  commentary_timeline.py (xếp câu lên timeline)
 ├── voice/         đọc thành tiếng: tts_v2.py (OpenAI / Gemini / Kokoro), voice_samples.py (nghe thử giọng)
-├── clients/       gọi API: openai_client.py, gemini_client.py (key chỉ lấy từ biến môi trường)
+├── api/           gọi API bên ngoài: openai_client.py, gemini_client.py (key chỉ lấy từ biến môi trường)
 ├── evaluation/    eval_vs_fifa.py (so sự kiện luồng YES với FIFA)
 ├── notebooks/     notebook Colab / Kaggle (colab_test_pipeline, colab_video2caption, colab_video2npy, colab_run, kaggle_run)
 ├── docs/          HUONG_DAN.md, NO_FLOW_SCRIPT.md, assets/

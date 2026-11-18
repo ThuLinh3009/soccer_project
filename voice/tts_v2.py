@@ -51,7 +51,7 @@ from argparse import ArgumentParser
 
 import numpy as np
 
-from clients.gemini_client import Gemini, GeminiError, ModelPool, read_key, save_wav, wav_to_pcm
+from api.gemini_client import Gemini, GeminiError, ModelPool, read_key, save_wav, wav_to_pcm
 from commentary.script_v2 import neutral_caption, time_slots
 
 RATE = 24000
