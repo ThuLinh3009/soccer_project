@@ -3,6 +3,28 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v6.3 (2026-11-18)
+Website nhỏ để crawl metadata trận đấu, và crawler lấy thêm nhiều trường hơn.
+
+- `crawl_web.py` (mới): chạy `python crawl_web.py --open`, rồi mở http://127.0.0.1:8765.
+  - Nhập mùa giải (tên giải, có thể để trống), năm tổ chức, đội 1, đội 2, chọn nam/nữ (mặc định tự động: thử nam rồi nữ).
+  - Nếu có nhiều trận thì chọn trận cần crawl. Trang hiện log trong lúc crawl, rồi hiện từng file CSV thành tab, có ô lọc dòng, tải từng file hoặc cả `.zip`.
+  - Chỉ dùng thư viện chuẩn Python (không cần Flask). Chỉ nghe ở 127.0.0.1, nên chỉ máy này mở được.
+- `fifa_crawl.py` có thêm dữ liệu (thêm cột vào file cũ, không đổi cột có sẵn, nên `script_v2.py` vẫn đọc như trước):
+  - `lineups.csv`: hồ sơ FIFA của từng cầu thủ, gồm ngày sinh, tuổi lúc bóng lăn, chiều cao, cân nặng, nơi sinh, quốc tịch, số trận và số bàn cho đội tuyển, ngày ra mắt đội tuyển.
+  - `staff.csv`: ngày sinh và tuổi của HLV.
+  - `teams.csv` (mới): viết tắt, năm thành lập, thành phố, địa chỉ, liên đoàn châu lục, sơ đồ, HLV.
+  - `goals.csv` (mới): người ghi bàn, đội của người ghi bàn, người kiến tạo, loại bàn (`goal`, `penalty`, `own goal`). Với phản lưới nhà, `team` là đội được tính bàn, `scorer_team` là đội của cầu thủ đá phản lưới.
+  - `match_info.csv`: thêm khoảng 20 trường, gồm nam/nữ, ngày bắt đầu và kết thúc mùa giải, viết tắt tên đội, HLV hai đội, đội thắng, số phút bù giờ mỗi hiệp, tỉ số tổng hai lượt, địa chỉ và tọa độ sân, sân có mái che không, số bàn, số thẻ vàng, thẻ đỏ, lượt thay người.
+  - `all_metadata.csv` (mới): gộp mọi file thành một bảng dài (`section, row, field, value`).
+  - Tắt phần hồ sơ bằng `--no_profiles` (bớt khoảng 45 request).
+  - Trận nữ: câu đội hình trong `facts.csv` dùng "in front of her" thay vì "him".
+  - Lỗi nhập liệu (không tìm thấy đội, năm sai, không có trận) báo bằng `CrawlError`, để web hiện được thông báo lỗi.
+- Đã chạy thử local qua web:
+  - Chelsea – Man City (WSL 2025/26): 2 trận tìm được; crawl trận 5/9 mất 20 giây, 40 cầu thủ có hồ sơ, 3 bàn (có 1 phản lưới), `all_metadata` 2781 ô.
+  - Brazil – Norway (World Cup 2026): 47 giây, 50 cầu thủ, 3 bàn (có 1 phạt đền).
+  - Dòng lệnh: Arsenal – Liverpool 2023 tìm được 3 trận, gồm cả FA Cup.
+
 ## v6.2 (2026-11-17)
 Giọng đọc hào hùng hơn, hợp với bóng đá.
 

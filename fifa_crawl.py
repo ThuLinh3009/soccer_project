@@ -11,7 +11,13 @@ Output: one folder per match between A and B in that season, with
     form.csv              last 5 results of each team before the match (all competitions)
     head_to_head.csv      previous meetings of the two teams
     facts.csv             ready-to-say sentences with priority and the time from which each may be said
+    teams.csv             (v6.3) team profiles: abbreviation, founded, city, confederation, formation, coach
+    goals.csv             (v6.3) goals with scorer and assist
+    all_metadata.csv      (v6.3) every file above in one long table: section, row, field, value
     raw/*.json            the API answers, for checking
+lineups.csv / staff.csv also get (v6.3) the FIFA profiles: birth date, age at kick-off, height, weight, birth place,
+nationality, international caps and goals (--no_profiles to skip, ~45 more requests).
+Web form: python crawl_web.py
 
 Usage (terminal):
     python fifa_crawl.py                                   # asks for season and teams
@@ -41,6 +47,10 @@ POSITIONS = {0: "GK", 1: "DF", 2: "MF", 3: "FW"}
 PERIODS = {3: (1, 0), 5: (2, 45), 7: (3, 90), 9: (4, 105), 11: (5, 120)}
 MINUTE_RE = re.compile(r"(\d+)'?\s*(?:\+\s*(\d+))?")
 FIELD_STATUS_STARTER = 1
+
+
+class CrawlError(Exception):
+    """Wrong input or nothing found: main() prints it, crawl_web.py shows it."""
 
 
 # ----------------------------------------------------------------------------- API
@@ -102,7 +112,7 @@ def team_name(t):
 def find_team(name, women=False):
     res = (get("teams/search", name=name, count=50) or {}).get("Results", [])
     if not res:
-        sys.exit(f"Không tìm thấy đội '{name}' trên FIFA")
+        raise CrawlError(f"Không tìm thấy đội '{name}' trên FIFA")
     q, gender = name.strip().lower(), 2 if women else 1
 
     def rank(t):
@@ -117,9 +127,9 @@ def find_team(name, women=False):
 
 
 def parse_season(s):
-    years = re.findall(r"\d{4}|\d{2}", s)
+    years = re.findall(r"\d{4}|\d{2}", s or "")
     if not years or len(years[0]) != 4:
-        sys.exit(f"Season không hợp lệ: '{s}' (ví dụ 2023 hoặc 2023/2024)")
+        raise CrawlError(f"Season không hợp lệ: '{s}' (ví dụ 2023 hoặc 2023/2024)")
     return int(years[0])
 
 
@@ -210,8 +220,48 @@ def write_csv(path, rows, fields=None):
         w.writerows(rows)
 
 
+# ----------------------------------------------------------------------------- profiles (v6.3)
+def age_at(birth, when):
+    """Whole years between an ISO birth date and the kick-off datetime."""
+    if not birth:
+        return ""
+    b = parse_date(birth)
+    return when.year - b.year - ((when.month, when.day) < (b.month, b.day))
+
+
+def player_profile(id_player, kickoff):
+    d = get(f"players/{id_player}") or {}
+    foot = d.get("PreferredFoot")
+    return {"birth_date": (d.get("BirthDate") or "")[:10], "age": age_at(d.get("BirthDate"), kickoff),
+            "height_cm": d.get("Height") or "", "weight_kg": d.get("Weight") or "", "birth_place": d.get("BirthPlace") or "",
+            "nationality": d.get("IdCountry") or "", "international_caps": d.get("InternationalCaps"),
+            "international_goals": d.get("Goals"), "international_debut": (d.get("InternationalDebut") or "")[:10],
+            "preferred_foot_code": "" if foot in (None, 9999) else foot,
+            "id_statsperform": (d.get("Properties") or {}).get("IdStatsPerform", "")}
+
+
+def team_profile(t):
+    d = get(f"teams/{t['IdTeam']}") or {}
+    return {"abbreviation": t.get("Abbreviation") or d.get("Abbreviation") or "",
+            "short_name": t.get("ShortClubName") or d.get("ShortClubName") or "", "founded": d.get("FoundationYear") or "",
+            "city": d.get("City") or "", "address": d.get("Street") or "", "country": d.get("IdCountry") or "",
+            "association": d.get("IdAssociation") or "", "confederation": d.get("IdConfederation") or "",
+            "gender": {1: "men", 2: "women"}.get(t.get("Gender") or d.get("Gender"), ""),
+            "official_site": d.get("OfficialSite") or ""}
+
+
+def write_all(path, sections):
+    """Every CSV in one long table (section, row, field, value): easy to read, filter and diff."""
+    rows = []
+    for section, data in sections:
+        for i, r in enumerate(data, 1):
+            rows += [{"section": section, "row": i, "field": k, "value": v} for k, v in r.items()]
+    write_csv(path, rows, ["section", "row", "field", "value"])
+    return len(rows)
+
+
 # ----------------------------------------------------------------------------- one match
-def crawl_match(m, args):
+def crawl_match(m, args, log=print):
     ids = "/".join([m["IdCompetition"], m["IdSeason"], m["IdStage"], m["IdMatch"]])
     live = get(f"live/football/{ids}") or {}
     timeline = (get(f"timelines/{ids}") or {}).get("Event", []) or []
@@ -242,6 +292,41 @@ def crawl_match(m, args):
              for side, t in (("home", home_t), ("away", away_t)) for c in t.get("Coaches") or []]
     staff += [{"side": "", "team": "", "role": txt(o.get("TypeLocalized")), "name": pretty(txt(o["Name"])), "country": o.get("IdCountry")}
               for o in live.get("Officials") or m.get("Officials") or []]
+
+    # --- profiles (v6.3): one request per player / coach / team
+    teams = [{"side": side, "name": team_name(t), "tactics": t.get("Tactics") or "",
+              "head_coach": next((s["name"] for s in staff if s["side"] == side and s["role"] == "head_coach"), ""),
+              "id_team": t["IdTeam"]} for side, t in (("home", home_t), ("away", away_t))]
+    season_d, comp_d = {}, {}
+    if getattr(args, "profiles", True):
+        log(f"  hồ sơ {len(players)} cầu thủ, HLV, đội, mùa giải...")
+        for i, p in enumerate(players, 1):
+            p.update(player_profile(p["id_player"], kickoff))
+            if i % 10 == 0:
+                log(f"    {i}/{len(players)} cầu thủ")
+        coach_ids = {pretty(txt(c["Name"])): c.get("IdCoach") for t in (home_t, away_t) for c in t.get("Coaches") or []}
+        for s in staff:
+            if s["name"] in coach_ids and coach_ids[s["name"]]:
+                d = get(f"coaches/{coach_ids[s['name']]}") or {}
+                s.update({"birth_date": (d.get("BirthDate") or "")[:10], "age": age_at(d.get("BirthDate"), kickoff)})
+        for row, t in zip(teams, (home_t, away_t)):
+            row.update(team_profile(t))
+        season_d, comp_d = get(f"seasons/{m['IdSeason']}") or {}, get(f"competitions/{m['IdCompetition']}") or {}
+    # goals with assist: the live feed may use Stats Perform ids for some players
+    by_id = {p["id_player"]: p for p in players}
+    by_id.update({p["id_statsperform"]: p for p in players if p.get("id_statsperform")})
+    goals = []
+    for t in (home_t, away_t):
+        for g in t.get("Goals") or []:
+            tm = event_time(g.get("Minute"), g.get("Period"))
+            scorer, assist = by_id.get(g.get("IdPlayer"), {}), by_id.get(g.get("IdAssistPlayer"), {})
+            goals.append({"game_time": game_time(tm), "minute": g.get("Minute"), "team": team_name(t),
+                          "scorer": scorer.get("name", ""), "scorer_team": scorer.get("team", ""),
+                          "assist": assist.get("name", ""),
+                          # codes checked against the timeline (3 = own goal: scorer_team is the other side); others kept as code
+                          "goal_type": {1: "penalty", 2: "goal", 3: "own goal"}.get(g.get("Type"), g.get("Type")),
+                          "id_scorer": g.get("IdPlayer"), "_t": tm or (9, 0)})
+    goals.sort(key=lambda g: g.pop("_t"))
 
     # --- timeline
     events = []
@@ -285,20 +370,39 @@ def crawl_match(m, args):
             "temperature": weather.get("Temperature") if isinstance(weather, dict) else "",
             "humidity": weather.get("Humidity") if isinstance(weather, dict) else "",
             "weather": txt(weather.get("TypeLocalized")) if isinstance(weather, dict) else ""}
+    # v6.3: more fields (appended, so older readers of match_info.csv are unaffected)
+    winner = m.get("Winner") or live.get("Winner")
+    info.update({
+        "gender": {1: "men", 2: "women"}.get(home_t.get("Gender"), ""),
+        "competition_full": txt(comp_d.get("Name")) or competition,
+        "confederation": ", ".join(c if isinstance(c, list) else [c]) if (c := comp_d.get("IdConfederation")) else "",
+        "season_start": (season_d.get("StartDate") or "")[:10], "season_end": (season_d.get("EndDate") or "")[:10],
+        "home_abbreviation": home_t.get("Abbreviation") or "", "away_abbreviation": away_t.get("Abbreviation") or "",
+        "home_head_coach": teams[0]["head_coach"], "away_head_coach": teams[1]["head_coach"],
+        "winner": home if winner == home_t.get("IdTeam") else away if winner == away_t.get("IdTeam") else ("draw" if winner is None and finished(m) else ""),
+        "first_half_added_minutes": live.get("FirstHalfExtraTime"), "second_half_added_minutes": live.get("SecondHalfExtraTime"),
+        "aggregate_home": live.get("AggregateHomeTeamScore"), "aggregate_away": live.get("AggregateAwayTeamScore"),
+        "stadium_address": stadium.get("Street") or "", "stadium_roof": stadium.get("Roof"),
+        "stadium_latitude": stadium.get("Latitude"), "stadium_longitude": stadium.get("Longitude"),
+        "goals_total": len(goals), "yellow_cards": sum(e["type_name"].lower() == "yellow card" for e in events),
+        "red_cards": sum("red" in e["type_name"].lower() or "second yellow" in e["type_name"].lower() for e in events),
+        "substitutions": sum(e["_type"] == 5 for e in events),
+        "timeline_events": len(events)})
 
     facts = build_facts(info, players, staff, events, table, form, h2h, home_t, away_t)
 
-    write_csv(os.path.join(out, "match_info.csv"), [{"field": k, "value": v} for k, v in info.items()])
-    write_csv(os.path.join(out, "lineups.csv"), players)
-    write_csv(os.path.join(out, "staff.csv"), staff)
-    write_csv(os.path.join(out, "events.csv"), [{k: v for k, v in e.items() if not k.startswith("_")} for e in events])
-    write_csv(os.path.join(out, "standings_before.csv"), table,
-              ["position", "team", "P", "W", "D", "L", "GF", "GA", "GD", "Pts", "id_team"])
-    write_csv(os.path.join(out, "form.csv"), [{"team": team_name(t), **r} for t in (home_t, away_t) for r in form[t["IdTeam"]]])
-    write_csv(os.path.join(out, "head_to_head.csv"), [{"team": home, **r} for r in h2h])
-    write_csv(os.path.join(out, "facts.csv"), facts)
-    print(f"  {len(players)} cầu thủ, {len(events)} sự kiện, bảng xếp hạng {len(table)} đội, "
-          f"đối đầu {len(h2h)} trận, {len(facts)} câu -> {out}")
+    rows = {"match_info": [{"field": k, "value": v} for k, v in info.items()], "teams": teams, "lineups": players,
+            "staff": staff, "goals": goals, "events": [{k: v for k, v in e.items() if not k.startswith("_")} for e in events],
+            "standings_before": table,
+            "form": [{"team": team_name(t), **r} for t in (home_t, away_t) for r in form[t["IdTeam"]]],
+            "head_to_head": [{"team": home, **r} for r in h2h], "facts": facts}
+    for name, data in rows.items():
+        fields = ["position", "team", "P", "W", "D", "L", "GF", "GA", "GD", "Pts", "id_team"] if name == "standings_before" else None
+        write_csv(os.path.join(out, f"{name}.csv"), data, fields)
+    n_all = write_all(os.path.join(out, "all_metadata.csv"),
+                      [("match_info", [info])] + [(k, v) for k, v in rows.items() if k != "match_info"])
+    log(f"  {len(players)} cầu thủ, {len(events)} sự kiện, {len(goals)} bàn, bảng xếp hạng {len(table)} đội, "
+        f"đối đầu {len(h2h)} trận, {len(facts)} câu, all_metadata {n_all} ô -> {out}")
     return out
 
 
@@ -344,7 +448,8 @@ def build_facts(info, players, staff, events, table, form, h2h, home_t, away_t):
         keeper = next((p for p in starters if p["position"] == "GK"), None)
         if keeper and len(starters) > 1:
             f.append(fact("lineup", f"{t} line up with {keeper['name']} in goal, and "
-                          f"{name_list([p['name'] for p in starters if p is not keeper])} in front of him.", 64))
+                          f"{name_list([p['name'] for p in starters if p is not keeper])} in front of "
+                          f"{'her' if info.get('gender') == 'women' else 'him'}.", 64))
         for p in starters:
             if p["captain"]:
                 f.append(fact("captain", f"{p['name']} wears the captain's armband for {t}.", 62))
@@ -445,14 +550,44 @@ def main():
     p.add_argument("--form", type=int, default=5, help="số trận gần nhất cho phong độ")
     p.add_argument("--h2h_years", type=int, default=10, help="số năm lấy lịch sử đối đầu")
     p.add_argument("--out", default="metadata/fifa", help="thư mục kết quả")
+    p.add_argument("--no_profiles", dest="profiles", action="store_false",
+                   help="bỏ hồ sơ cầu thủ/HLV/đội (nhanh hơn, ít cột hơn)")
     args = p.parse_args()
 
     args.season = args.season or input("Season (năm, ví dụ 2023 hoặc 2023/2024): ").strip()
     args.team_a = args.team_a or input("Đội bóng A: ").strip()
     args.team_b = args.team_b or input("Đội bóng B: ").strip()
-    year = parse_season(args.season)
+    try:
+        a, b, matches = find_matches(args.season, args.team_a, args.team_b, args.competition, args.women)
+    except CrawlError as e:
+        sys.exit(str(e))
+    print(f"Đội A: {a['name']} (id {a['id']}, {a['country']}) | Đội B: {b['name']} (id {b['id']}, {b['country']})")
+    print(f"{len(matches)} trận:")
+    for i, m in enumerate(matches, 1):
+        print(f"  [{i}] {match_label(m)}")
+    chosen = [matches[args.match - 1]] if args.match else matches
+    for m in chosen:
+        print(f"Crawl {m['Date'][:10]} {team_name(m['Home'])} - {team_name(m['Away'])}")
+        crawl_match(m, args)
 
-    a_list, b_list = find_team(args.team_a, args.women), find_team(args.team_b, args.women)
+
+def match_label(m):
+    return (f"{m['Date'][:10]} {txt(m['CompetitionName'])} ({txt(m['SeasonName'])}): "
+            f"{team_name(m['Home'])} {m.get('HomeTeamScore')} - {m.get('AwayTeamScore')} {team_name(m['Away'])}")
+
+
+def find_matches(season, team_a, team_b, competition=None, women=False):
+    """-> (team A, team B, matches of A vs B in the season starting in that year). women=None tries men then women."""
+    year = parse_season(season)
+    if women is None:
+        try:
+            return find_matches(season, team_a, team_b, competition, False)
+        except CrawlError as men_error:
+            try:
+                return find_matches(season, team_a, team_b, competition, True)
+            except CrawlError:
+                raise men_error from None
+    a_list, b_list = find_team(team_a, women), find_team(team_b, women)
     b_by_id = {t["id"]: t for t in b_list}
     start = datetime(year, 1, 1, tzinfo=timezone.utc)
     matches, a, b = [], a_list[0], b_list[0]
@@ -461,23 +596,17 @@ def main():
                    if m.get("Home") and m.get("Away")
                    and ({m["Home"]["IdTeam"], m["Away"]["IdTeam"]} & b_by_id.keys())
                    and season_matches(txt(m["SeasonName"]), year)
-                   and (not args.competition or args.competition.lower() in txt(m["CompetitionName"]).lower())]
+                   and (not competition or competition.lower() in txt(m["CompetitionName"]).lower()
+                        or competition.lower() in txt(m["SeasonName"]).lower())]
         if matches:
             a = cand
             b = b_by_id[({matches[0]["Home"]["IdTeam"], matches[0]["Away"]["IdTeam"]} & b_by_id.keys()).pop()]
             break
-    print(f"Đội A: {a['name']} (id {a['id']}, {a['country']}) | Đội B: {b['name']} (id {b['id']}, {b['country']})")
     if not matches:
-        sys.exit(f"Không có trận {a['name']} - {b['name']} trong mùa {args.season} trên FIFA "
-                 f"(FIFA chỉ có dữ liệu một số giải/mùa, ví dụ Premier League từ 2020/2021).")
-    print(f"{len(matches)} trận:")
-    for i, m in enumerate(matches, 1):
-        print(f"  [{i}] {m['Date'][:10]} {txt(m['CompetitionName'])} ({txt(m['SeasonName'])}): "
-              f"{team_name(m['Home'])} {m.get('HomeTeamScore')} - {m.get('AwayTeamScore')} {team_name(m['Away'])}")
-    chosen = [matches[args.match - 1]] if args.match else matches
-    for m in chosen:
-        print(f"Crawl {m['Date'][:10]} {team_name(m['Home'])} - {team_name(m['Away'])}")
-        crawl_match(m, args)
+        raise CrawlError(f"Không có trận {a['name']} - {b['name']} ({'nữ' if women else 'nam'}) trong mùa {season}"
+                         f"{' giải ' + competition if competition else ''} trên FIFA "
+                         f"(FIFA chỉ có dữ liệu một số giải/mùa, ví dụ Premier League từ 2020/2021).")
+    return a, b, matches
 
 
 if __name__ == "__main__":
