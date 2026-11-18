@@ -162,8 +162,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/crawl":
                 return self.send(200, start(body))
             self.send(404, {"error": "not found"})
-        except fc.CrawlError as e:
-            self.send(400, {"error": str(e)})
+        except fc.CrawlError as e:  # first line = message; the page shows the suggestions as buttons
+            self.send(400, {"error": str(e).split("\n")[0], "suggestions": e.suggestions})
         except Exception as e:
             self.send(500, {"error": f"{type(e).__name__}: {e}"})
 
@@ -249,8 +249,20 @@ let state = {};
 async function api(path, body){
   const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : {});
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || r.statusText);
+  if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), {suggestions: j.suggestions || []});
   return j;
+}
+function suggest(list){
+  if (!list || !list.length) return "";
+  return `<p class="muted" style="margin:12px 0 4px">Các trận gần đó của hai đội (bấm để tìm lại với năm đó):</p>` +
+    list.map((s,i) => `<div class="match"><span>${esc(s.label)}</span><button class="ghost sug" data-i="${i}">Năm ${esc(s.year)}</button></div>`).join("");
+}
+function bindSuggest(list){
+  document.querySelectorAll("button.sug").forEach(b => b.onclick = () => {
+    const s = list[+b.dataset.i], f = $("#f");
+    f.year.value = s.year; f.competition.value = s.competition;
+    f.requestSubmit();
+  });
 }
 function busy(el, text){ el.hidden = false; el.innerHTML = `<span class="spin"></span>${esc(text)}`; }
 
@@ -272,7 +284,8 @@ $("#f").addEventListener("submit", async e => {
        <button class="ghost" data-i="${m.index}" data-l="${esc(m.label)}">Crawl</button></div>`).join("");
     $("#pick").querySelectorAll("button").forEach(b => b.onclick = () => crawl(res.search_id, +b.dataset.i, b.dataset.l));
   } catch (err) {
-    $("#msg").innerHTML = `<div class="err">${esc(err.message)}</div>`;
+    $("#msg").innerHTML = `<div class="err">${esc(err.message)}</div>` + suggest(err.suggestions);
+    bindSuggest(err.suggestions);
   } finally { $("#go").disabled = false; }
 });
 

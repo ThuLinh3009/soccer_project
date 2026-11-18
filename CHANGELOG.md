@@ -3,6 +3,11 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v6.4 (2026-11-18)
+- `fifa_crawl.py`: khi không tìm thấy trận trong mùa giải đã nhập, crawler tìm các trận của hai đội đó trong khoảng 2 năm trước và sau, ở mọi giải (tối đa 6 trận). Thông báo lỗi kèm năm cần nhập cho từng trận. Ví dụ: Brazil – Norway, nhập năm 2025 → gợi ý "2026-07-05 FIFA World Cup 2026: Brazil 1 - 2 Norway → năm 2026".
+- `crawl_web.py`: các trận gợi ý hiện thành nút. Bấm vào thì trang tự điền năm và tên giải rồi tìm lại.
+- Chế độ "tự động nam/nữ": nếu bên nam không có trận nào để gợi ý mà bên nữ có, trang hiện thông báo của bên nữ.
+
 ## v6.3 (2026-11-18)
 Website nhỏ để crawl metadata trận đấu, và crawler lấy thêm nhiều trường hơn.
 

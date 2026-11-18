@@ -50,7 +50,12 @@ FIELD_STATUS_STARTER = 1
 
 
 class CrawlError(Exception):
-    """Wrong input or nothing found: main() prints it, crawl_web.py shows it."""
+    """Wrong input or nothing found: main() prints it, crawl_web.py shows it.
+    suggestions: matches of the same two teams in nearby years ({label, year, competition}), to pick instead."""
+
+    def __init__(self, msg, suggestions=None):
+        super().__init__(msg)
+        self.suggestions = suggestions or []
 
 
 # ----------------------------------------------------------------------------- API
@@ -585,8 +590,8 @@ def find_matches(season, team_a, team_b, competition=None, women=False):
         except CrawlError as men_error:
             try:
                 return find_matches(season, team_a, team_b, competition, True)
-            except CrawlError:
-                raise men_error from None
+            except CrawlError as women_error:  # keep the one that can suggest other matches
+                raise (women_error if women_error.suggestions and not men_error.suggestions else men_error) from None
     a_list, b_list = find_team(team_a, women), find_team(team_b, women)
     b_by_id = {t["id"]: t for t in b_list}
     start = datetime(year, 1, 1, tzinfo=timezone.utc)
@@ -603,9 +608,23 @@ def find_matches(season, team_a, team_b, competition=None, women=False):
             b = b_by_id[({matches[0]["Home"]["IdTeam"], matches[0]["Away"]["IdTeam"]} & b_by_id.keys()).pop()]
             break
     if not matches:
+        # (v6.4) same two teams, any competition, 2 years around: the user often types the wrong year or name
+        near = {}
+        for cand in a_list:
+            for m in team_matches(cand["id"], datetime(year - 2, 1, 1, tzinfo=timezone.utc),
+                                  datetime(year + 3, 1, 1, tzinfo=timezone.utc)):
+                if m.get("Home") and m.get("Away") and {m["Home"]["IdTeam"], m["Away"]["IdTeam"]} & b_by_id.keys():
+                    near[m["IdMatch"]] = m
+        target = datetime(year, 7, 1, tzinfo=timezone.utc)
+        near = sorted(near.values(), key=lambda m: abs((parse_date(m["Date"]) - target).days))[:6]
+        suggestions = [{"label": match_label(m), "competition": txt(m["CompetitionName"]),
+                        "year": (re.findall(r"(?<!\d)(\d{4})(?!\d)", txt(m["SeasonName"])) or [m["Date"][:4]])[0]}
+                       for m in sorted(near, key=lambda m: m["Date"])]
+        hint = ("\nCác trận gần đó của hai đội:\n" + "\n".join(f"  {s['label']}  → năm {s['year']}" for s in suggestions)
+                if suggestions else "")
         raise CrawlError(f"Không có trận {a['name']} - {b['name']} ({'nữ' if women else 'nam'}) trong mùa {season}"
                          f"{' giải ' + competition if competition else ''} trên FIFA "
-                         f"(FIFA chỉ có dữ liệu một số giải/mùa, ví dụ Premier League từ 2020/2021).")
+                         f"(FIFA chỉ có dữ liệu một số giải/mùa, ví dụ Premier League từ 2020/2021).{hint}", suggestions)
     return a, b, matches
 
 
