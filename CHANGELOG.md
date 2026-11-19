@@ -3,6 +3,23 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.3 (2026-11-19)
+- `voice/tts_v2.py`: thêm `--openai_speed` (mặc định 1.0). Ví dụ `--openai_speed 1.5` làm mọi câu đọc nhanh hơn 1,5 lần mà không đổi cao độ giọng (dùng lại WSOLA).
+  - Phần tăng tốc cho vừa khoảng trống được cộng thêm, nhưng tổng tốc độ không quá `--max_total_speed` (mặc định 1,75).
+  - Hai lần tăng tốc gộp thành một lần kéo giãn, nên tiếng nghe tốt hơn.
+  - Tăng tốc làm sau bước cache, nên đổi tốc độ không phải gọi lại OpenAI.
+- `commentary/no_flow_llm.py`: khi không có `1_224p.mp4`, độ dài hiệp lấy từ video có độ phân giải khác, ví dụ `1_720p.mp4`. Nhờ vậy luồng NO chạy được với thư mục chỉ có video 720p.
+- Notebook test (`notebooks/colab_test_pipeline_v7.3.ipynb`) có thêm các biến ở cell 2:
+  - `NO_EVENTS = "fifa"`: test riêng luồng NO, không cần luồng YES, model hay GPU. Chạy cell 2, 3, 4, 10, 12.
+  - `VIDEO_NAME = "{half}_720p.mp4"`: ghép giọng vào video 720p.
+  - `OPENAI_SPEED = 1.5`: đọc nhanh 1,5 lần. Cell 10 tự nhân `WORDS_PER_SECOND` với tỉ lệ này để LLM viết câu dài hơn cho vừa khoảng trống.
+  - `OPENAI_STYLE_NO`: chỉ dẫn riêng cho giọng đọc luồng NO.
+  - `TTS_ONLY`: chọn đọc câu `all`, `no` hoặc `yes`.
+  - Cell 3 nhận video `1_*p.mp4` (224p, 720p...).
+- Đã chạy thử local trên Brazil – Norway (template, không gọi API):
+  - luồng NO chạy với `--wps 2.6` và `--wps 3.9`;
+  - `voice.tts_v2 --engine openai --openai_speed 1.5` với clip giả trong cache: mọi clip x1.5, tốc độ đo được 3,9 từ/giây, khớp với lịch; câu sự kiện không bị đọc trễ.
+
 ## v7.2 (2026-11-19)
 - `crawler/fifa_crawl.py`: API FIFA có lúc ngừng trả lời vài giây (lỗi timeout WinError 10060). Trước đây chỉ cần một request hồ sơ cầu thủ hỏng là cả lần crawl dừng.
   - `get()` giờ thử lại 5 lần, chờ 3, 6, 9, 12 giây giữa các lần; timeout mỗi request là 20 giây.

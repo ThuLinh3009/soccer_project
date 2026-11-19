@@ -108,9 +108,13 @@ def events_from_yes(path):
 
 
 def half_lengths(video_dir, events):
+    import glob
     lens = []
     for half in (1, 2):
         path = os.path.join(video_dir, f"{half}_224p.mp4") if video_dir else None
+        if path and not os.path.exists(path):  # (v7.3) only another height, e.g. 1_720p.mp4
+            other = sorted(glob.glob(os.path.join(glob.escape(video_dir), f"{half}_*p.mp4")))
+            path = other[0] if other else None
         if path and os.path.exists(path):
             import av
             with av.open(path) as c:

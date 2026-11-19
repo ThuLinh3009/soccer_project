@@ -368,6 +368,12 @@ def main(args):
         done.append((c, path, voice))
         print(f"  [{i + 1}/{len(lines)}] {c['gameTime']} {voice:<7} {c['text'][:90]}")
 
+    # (v7.3) --openai_speed: every OpenAI clip is said this much faster (WSOLA, same pitch); the fit to the time slot
+    # comes on top, the total kept under --max_total_speed. Done after the cache: changing it costs nothing.
+    base = args.openai_speed if openai else 1.0
+    if base < 1.0:
+        raise SystemExit("--openai_speed must be >= 1 (only speeding up is supported)")
+    fit_cap = min(args.max_speed, args.max_total_speed / base) if base > 1.001 else args.max_speed
     placed, rates = [], {}
     for half in args.halves:
         half_len = half_lens[half - 1]
@@ -375,7 +381,7 @@ def main(args):
         prev_end, prev_code, items = None, None, []
         for c, path, voice in (d for d in done if d[0]["half"] == half):
             audio = trim(load_clip(path))
-            raw = len(audio) / RATE
+            raw = len(audio) / RATE / base  # length once said at the base speed
             rates.setdefault(voice, []).append(len(c["text"].split()) / max(raw, 0.5))
             nxt = None if prev_end is None else math.ceil(prev_end + args.pause)  # next whole second
             # a no line close after the previous clip is said right after it; a yes line (event on the pitch)
@@ -385,12 +391,14 @@ def main(args):
             start = nxt if follows else max(math.ceil(c["second"]), nxt or 0)
             if start >= half_len:
                 continue
-            speed = 1.0
-            if args.max_speed > 1 and c.get("slot"):  # time left before the next planned line
+            fit = 1.0
+            if fit_cap > 1 and c.get("slot"):  # time left before the next planned line
                 avail = c["second"] + c["slot"] - start
                 if raw > avail:
-                    speed = min(raw / max(avail, 0.1), args.max_speed)
-                    audio = time_stretch(audio, speed)
+                    fit = min(raw / max(avail, 0.1), fit_cap)
+            speed = base * fit
+            if speed > 1.001:  # one stretch for both: better sound than two in a row
+                audio = time_stretch(audio, speed)
             dur = len(audio) / RATE
             prev_end, prev_code = start + dur, c.get("code") or None
             items.append([start, audio, c, voice, speed, follows])
@@ -430,8 +438,9 @@ def main(args):
         save_wav(wav, np.clip(track, -32768, 32767).astype(np.int16).tobytes(), RATE)
         mine = [p for p in placed if p["half"] == half]
         late = [p for p in mine if p["shift"] > 5]
-        fast = [p for p in mine if p["speed"] > 1.0]
-        print(f"half {half}: {len(mine)} clips -> {wav}" + (f" | {len(fast)} sped up" if fast else "")
+        fast = [p for p in mine if p["speed"] > base + 0.001]
+        print(f"half {half}: {len(mine)} clips -> {wav}" + (f" | base speed x{base}" if base > 1.001 else "")
+              + (f" | {len(fast)} sped up more to fit" if fast else "")
               + (f" | {len(late)} moved > 5 s later" if late else ""))
         for p in mine:
             note = (f", x{p['speed']}" if p["speed"] > 1 else "") + (f", planned {p['planned'][4:]}"
@@ -483,6 +492,11 @@ if __name__ == "__main__":
     p.add_argument("--openai_model", default="gpt-4o-mini-tts", help="OpenAI TTS model")
     p.add_argument("--openai_voice_yes", default="ash", help="OpenAI voice of the yes lines (play-by-play)")
     p.add_argument("--openai_voice_no", default="onyx", help="OpenAI voice of the no lines (presenter)")
+    p.add_argument("--openai_speed", type=float, default=1.0,
+                   help="(v7.3) say every OpenAI line this much faster, e.g. 1.5 (pitch unchanged; give "
+                        "commentary/no_flow_v2.py --wps 2.6 x this so the lines are written longer)")
+    p.add_argument("--max_total_speed", type=float, default=1.75,
+                   help="(v7.3) with --openai_speed: base speed x fit to the slot stays under this")
     p.add_argument("--openai_style", choices=["epic", "calm"], default="epic",
                    help="(v6.2) how the OpenAI voices speak: epic = big-match, heroic TV commentary (default); "
                         "calm = the v5.6 style")
