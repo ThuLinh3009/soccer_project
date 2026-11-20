@@ -1072,7 +1072,7 @@ class Filler:
     def _fits(self, texts, budget):
         return [t for t in texts if t and word_count(t) <= budget]
 
-    def pick(self, half, second, budget, half_len, after_yes=""):
+    def pick(self, half, second, budget, half_len, after_yes="", relaxed=False):
         """A line of at most `budget` words for this time, or (None, None).
         after_yes: text of the yes event just said; its count (third corner...) is said first when it changed."""
         now = half * 10000 + second
@@ -1097,7 +1097,9 @@ class Filler:
         # (a topic other than the one just said first, so that two bench lines do not follow each other)
         last = max(self.last_cat, key=self.last_cat.get)
         off = self.gone_off(half, second)
-        old = sorted((it for it in self.items if it.uses and now - it.last >= self.reuse_after and not (
+        # (v7.8) relaxed: a long silence and nothing new left: a fact said at least half of reuse_after ago may come back
+        reuse = self.reuse_after / 2 if relaxed else self.reuse_after
+        old = sorted((it for it in self.items if it.uses and now - it.last >= reuse and not (
                       it.category in PLAYER_CATS and any(name in it.variants[0] for name in off))),
                      key=lambda it: (it.category == last, now - self.last_cat[it.category] < self.COOLDOWN[it.category],
                                      it.last))
@@ -1127,7 +1129,8 @@ class Filler:
             return self.rng.choice(texts) if texts else None
         if cat == "recap":
             for key, texts in self._recap(half, second):
-                if now - self.recap_last.get(key, -1e9) >= 480:
+                # (v7.8) a goal may be recalled every 8 minutes; a card or a change only after reuse_after
+                if now - self.recap_last.get(key, -1e9) >= (480 if key.startswith("goal:") else self.reuse_after):
                     texts = self._fits(texts, budget)
                     if texts:
                         self.recap_last[key] = now
@@ -1160,7 +1163,8 @@ class Filler:
 
 
 def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=1.0, min_fill=3.0,
-                    max_line_words=30, seed=0, reuse_after=1500, retry_step=10.0, target=1.0, window=300.0):
+                    max_line_words=30, seed=0, reuse_after=1500, retry_step=10.0, target=1.0, window=300.0,
+                    max_silence=1e9):
     """Fill every silence of the timeline with no-flow lines, so that the commentary never stops.
 
     yes_events: [(half, second, text)] (muted ones are not spoken); lines: the no-flow lines of build_schedule.
@@ -1199,14 +1203,16 @@ def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=
             t = None if end is None else end + pause
             limit = min(start, stop) - margin
             while t is not None and t < stop and limit - t >= min_fill:
-                if half_target < 1.0 and t > window / 2 and busy_share(t) >= half_target:
-                    t += retry_step  # (v7.6) enough talk lately: keep the facts for later in the half
-                    continue
+                quiet = t - max([s + d for s, d in talk if s <= t] + [-1e9])  # seconds since anyone spoke
+                if half_target < 1.0 and t > window / 2 and busy_share(t) >= half_target and quiet < max_silence:
+                    t += min(retry_step, max(1.0, max_silence - quiet))  # (v7.6) enough talk lately: keep the facts
+                    continue  # for later; (v7.8) but never a silence longer than max_silence while facts are left
                 budget = min(max_line_words, max_words(limit - t))
                 if budget < 3:
                     break
                 cat, text_fill = filler.pick(half, int(t), budget, half_len,
-                                             after_yes=prev_text if prev_code == "YES" else "")
+                                             after_yes=prev_text if prev_code == "YES" else "",
+                                             relaxed=quiet >= 2 * max_silence)
                 if not text_fill:  # (v7.5) every topic is cooling down: try again a little later (was: give up the
                     t += retry_step  # whole silence, which left gaps of 2-3 minutes)
                     continue

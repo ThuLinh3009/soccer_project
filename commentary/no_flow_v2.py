@@ -205,7 +205,8 @@ def main(args):
     n_fill = 0
     if args.continuous:
         fills = fill_continuous(ctx, lines, yes, muted, half_lens, pause=args.fill_pause, min_fill=args.fill_min,
-                                seed=args.seed, reuse_after=args.fill_reuse, target=args.fill_target)
+                                seed=args.seed, reuse_after=args.fill_reuse, target=args.fill_target,
+                                max_silence=args.max_silence)
         n_fill = len(fills)
         lines = sorted(lines + fills, key=lambda l: (l.half, l.second))
     slots = time_slots([(h, s) for h, s, _ in yes if (h, s) not in muted] + [(l.half, l.second) for l in lines],
@@ -377,6 +378,9 @@ if __name__ == "__main__":
     p.add_argument("--fill_target", type=float, default=1.0,
                    help="(v7.6) --continuous: the filler stops while someone has been speaking more than this share of "
                         "the last 5 minutes (e.g. 0.55), so that the facts last the whole half (1 = no limit)")
+    p.add_argument("--max_silence", type=float, default=20.0,
+                   help="(v7.8) --continuous: after this many seconds without speech a line is said even when "
+                        "--fill_target would wait (the 40%% limit left silences of nearly 2 minutes)")
     p.add_argument("--min_llm_share", type=float, default=0.0,
                    help="(v7.5) stop with an error when the LLM wrote less than this share of the lines it was asked "
                         "for (e.g. 0.6): no silent fall-back to the templates")

@@ -3,6 +3,24 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.8 (2026-11-20)
+Sửa chỉ số còn bị đánh dấu trong bảng điểm v7.7 chạy trên Colab (Brazil – Norway, 10 phút đầu, sự kiện từ luồng YES): **khoảng lặng dài nhất 113 giây**. Các chỉ số khác đều đạt: 57% thời gian có tiếng nói, 2,47 từ/giây, tốc độ x1.1, 80% câu NO do gpt-4o-mini viết, 49 thông tin không lặp.
+
+- Nguyên nhân 1: giới hạn mật độ của v7.6 (`--fill_target 0.4`). Khi 5 phút trước đó đã có khoảng 40% thời gian có tiếng nói, bộ lấp đứng chờ, có lúc gần 2 phút dù vẫn còn thông tin.
+  - Sửa: `commentary/no_flow_v2.py --max_silence 20` (notebook `MAX_SILENCE = 20`). Im quá 20 giây thì vẫn nói một câu, dù đã chạm giới hạn mật độ.
+- Nguyên nhân 2: kho thông tin dùng hết trước khi đủ 20 phút để nhắc lại (ví dụ phút 17:40 đến 20:06).
+  - Sửa: im quá 40 giây mà không còn thông tin mới thì cho nhắc lại thông tin đã nói cách đó ít nhất 10 phút.
+- Câu tóm tắt thay người hoặc thẻ phạt chỉ nhắc lại sau 20 phút như các thông tin khác (bản cũ 8 phút). Bàn thắng vẫn được nhắc lại sau 8 phút.
+- Đã chạy thử local (template), khoảng lặng dài nhất trong lúc bóng lăn:
+
+  | Trận và nguồn sự kiện | v7.7 | v7.8 |
+  |---|---|---|
+  | Brazil – Norway, sự kiện YES giả lập | 64 giây | 27 giây (không còn khoảng nào > 30 giây) |
+  | Brazil – Norway, sự kiện FIFA | 136 giây | 44 giây |
+  | Chelsea (chỉ có metadata FIFA) | 162 giây | 43 giây |
+
+  Tỉ lệ thời gian có tiếng nói giữ khoảng 41% (Brazil – Norway) và 25% (Chelsea); 10 phút đầu mỗi hiệp không lặp thông tin.
+
 ## v7.7 (2026-11-20)
 Chấm điểm tự động đoạn demo, luồng NO tự dùng sự kiện của luồng YES khi có.
 
