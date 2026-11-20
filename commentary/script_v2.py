@@ -88,6 +88,23 @@ def minute_words(minute):
     return f"the {ordinal(m.group(2))} minute of stoppage time" if m.group(2) else f"the {ordinal(m.group(1))} minute"
 
 
+FORM_WORDS = {"W": "win", "D": "draw", "L": "loss"}
+
+
+def form_words(form):
+    """(v7.5) 'D W W L W' -> 'draw, win, win, loss and win': letters are read badly by a TTS voice."""
+    words = [FORM_WORDS[x] for x in (form or "").split() if x in FORM_WORDS]
+    return name_list(words)
+
+
+def formation_counts(tactics):
+    """(v7.5) '4-1-2-3' -> {'DF': 4, 'MF': 3, 'FW': 3}; {} when it cannot be read."""
+    parts = [int(x) for x in re.findall(r"\d", tactics or "")]
+    if len(parts) < 3 or sum(parts) != 10:
+        return {}
+    return {"DF": parts[0], "MF": sum(parts[1:-1]), "FW": parts[-1]}
+
+
 def next_stage(stage):
     s = (stage or "").lower()
     for key, nxt in (("32", "Round of 16"), ("16", "quarter-finals"), ("quarter", "semi-finals"), ("semi", "Final")):
@@ -167,6 +184,15 @@ class MatchContext:
     def players(self, side, role="starter"):
         return [r for r in self.lineups if r.get("side") == side and r.get("role") == role]
 
+    def unit_ok(self, side, code):
+        """(v7.5) True when the number of starters in this unit (DF / MF / FW) agrees with the formation, so that a
+        line like 'Up front for Brazil: four names' never contradicts 'Brazil line up in a 4-1-2-3'. The FIFA position
+        is a rough code (a wing-back can be FW): when it does not agree, the unit is not said at all."""
+        need = formation_counts(self.info.get(f"{side}_tactics", ""))
+        if not need:
+            return True
+        return sum(r.get("position") == code for r in self.players(side)) == need.get(code)
+
     def form_of(self, team):
         rows = sorted((r for r in self.form if r.get("team") == team), key=lambda r: r.get("date", ""))[-5:]
         return " ".join(r["result"] for r in rows), sum(r["result"] == "W" for r in rows), len(rows)
@@ -193,7 +219,7 @@ class MatchContext:
                              f"Group {v['group']}" if v["group"] else v["stage"])
         for side, team in (("home", self.home), ("away", self.away)):
             form, wins, n = self.form_of(team)
-            v[f"{side}_form"] = form if n == 5 else ""
+            v[f"{side}_form"] = form_words(form) if n == 5 else ""
             v[f"{side}_wins_last5"] = num_word(wins) if n == 5 else ""
             v[f"{side}_position"], v[f"{side}_points"] = self.standing(team)
         rows = [r for r in self.h2h if r.get("team") == self.home]
@@ -300,7 +326,7 @@ TEMPLATES = {
     ],
     # optional background, once per half each (section 2, "Tuỳ chọn")
     "form_home": [(None, "{home_team} have won {home_wins_last5} of their last five games.")],
-    "form_away": [(None, "{away_team}'s last five results read {away_form}.")],
+    "form_away": [(None, "{away_team}'s last five results: {away_form}.")],
     "h2h": [(None, "These two sides have met {h2h_count} times: {h2h_home_wins} wins for {home_team}, "
                    "{h2h_away_wins} for {away_team} and {h2h_draws} draws.")],
     "tactics": [(None, "{home_team} line up in a {home_tactics}, {away_team} in a {away_tactics}.")],
@@ -453,6 +479,7 @@ class Line:
 
     slot: float = 0.0  # seconds until the next line (time_slots), set by commentary/no_flow_v2.py
     after: str = ""  # code of the line this one follows in a chain (A1 -> A2 -> A3...): said right after it
+    facts: list = field(default_factory=list)  # (v7.5) keys of the facts said (Filler items), e.g. "coach:home"
 
     def __post_init__(self):
         self.phase = self.phase or PHASE_OF.get(self.code, "background")
@@ -496,24 +523,33 @@ def end_time(ctx, half):
     return None
 
 
+# (v7.5) facts said by a line of the script (keys of the Filler items): the continuous filler does not say them again
+CODE_FACTS = {"A1": ["stadium", "competition"], "A2": ["coach:home", "coach:away"], "form_home": ["form:home"],
+              "form_away": ["form:away"], "h2h": ["h2h"], "tactics": ["tactics:home", "tactics:away"],
+              "captains": ["captain:home", "captain:away"], "referee": ["referee"], "attendance": ["attendance"],
+              "stadium": ["stadium"], "bench_home": ["bench:home:*"], "bench_away": ["bench:away:*"]}
+
+
 def optional_text(ctx, code, v, rng, said_players):
+    """-> (text, facts) of an optional background line; (None, []) when it cannot be made."""
     if code.startswith(("lineup_", "bench_", "numbers_")):
         kind, side = code.split("_")
         team = ctx.home if side == "home" else ctx.away
         if kind == "bench":
             names = [r["name"] for r in ctx.players(side, "substitute")][:5]
-            return f"On the {team} bench: {name_list(names)}." if len(names) >= 3 else None
+            return (f"On the {team} bench: {name_list(names)}.", CODE_FACTS[code]) if len(names) >= 3 else (None, [])
         pool = [r for r in ctx.players(side) if r["name"] not in said_players]
         if kind == "lineup":
             pool = [r for r in pool if r.get("position") != "GK"]
         group = pool[:4] if kind == "lineup" else pool[:3]
         if len(group) < 3:
-            return None
+            return None, []
         said_players.update(r["name"] for r in group)
         if kind == "lineup":
-            return f"In the {team} line-up: {name_list([r['name'] for r in group])}."
-        return f"For {team}, " + name_list([f"{r['name']} wears {r['shirt_number']}" for r in group]) + "."
-    return render(code, v, rng)
+            return f"In the {team} line-up: {name_list([r['name'] for r in group])}.", []
+        return (f"For {team}, " + name_list([f"{r['name']} wears {r['shirt_number']}" for r in group]) + ".",
+                [f"player:{r['name']}" for r in group])
+    return render(code, v, rng), CODE_FACTS.get(code, [])
 
 
 def build_schedule(ctx, yes_events, half_lens, seed=0, after_event=15, before_event=10, min_gap=45,
@@ -553,7 +589,7 @@ def build_schedule(ctx, yes_events, half_lens, seed=0, after_event=15, before_ev
     def add(half, t, code, text, max_delay=60, topic=""):
         if text:
             lines.append(Line(half, place(half, t, text, max_delay), code, text, True, topic=topic,
-                              vars=V(half, t)))
+                              vars=V(half, t), facts=list(CODE_FACTS.get(code, []))))
             return lines[-1]
 
     def chain(half, t, codes, max_delay=60):
@@ -629,10 +665,10 @@ def build_schedule(ctx, yes_events, half_lens, seed=0, after_event=15, before_ev
                     topic = code.split("_")[0]
                     if used.get(code, 0) >= limit or (len(recent) == 2 and recent[0] == recent[1] == topic):
                         continue
-                    text = optional_text(ctx, code, V(half, t), rng, said_players)
+                    text, facts = optional_text(ctx, code, V(half, t), rng, said_players)
                     if text and after_event + speech_len(text) + before_event <= free:
                         lines.append(Line(half, t + after_event, code, text, False, topic=topic,
-                                          vars=V(half, t)))
+                                          vars=V(half, t), facts=facts))
                         used[code] = used.get(code, 0) + 1
                         break
                 else:
@@ -694,7 +730,7 @@ class Filler:
     are all used, the least recently used one comes back (after `reuse_after` seconds) with its next wording.
     Dynamic items (score, clock, recap) are made from the time of the line."""
 
-    COOLDOWN = {"stats": 40, "score": 100, "clock": 300, "recap": 150, "player": 0, "unit": 45, "team": 45,
+    COOLDOWN = {"stats": 40, "score": 240, "clock": 300, "recap": 150, "player": 30, "unit": 45, "team": 45,
                 "form": 45, "h2h": 60, "venue": 90, "bench": 90}
     ORDER = ["player", "team", "unit", "stats", "form", "venue", "h2h", "bench", "recap", "score", "clock"]
     # what the yes flow (or the FIFA stand-in) saw, counted per half: kind -> (keywords, singular, plural)
@@ -703,9 +739,9 @@ class Filler:
                "save": (r"\bsave", "save", "saves"), "free_kick": (r"free[- ]kick", "free kick", "free kicks"),
                "offside": (r"offside", "offside", "offsides"), "yellow": (r"yellow card|booked", "yellow card",
                                                                           "yellow cards")}
-    MIN_REUSE = 180  # a static item is never said twice within 3 minutes
-
-    def __init__(self, ctx, yes_events=(), reuse_after=900, seed=0):
+    def __init__(self, ctx, yes_events=(), reuse_after=1500, seed=0):
+        # (v7.5) a fact (all its wordings) is said again only after `reuse_after` seconds (25 min; was 3 min for the
+        # last-resort reuse): when everything has been said, the filler stays silent instead of repeating
         self.ctx, self.reuse_after = ctx, reuse_after
         self.rng = random.Random(seed)
         self.items = self._static_items()
@@ -714,6 +750,7 @@ class Filler:
         self.recap_last = {}
         self.yes = sorted((h, s, self.action_of(t)) for h, s, t in yes_events)
         self.stats_said = {}  # (half, kind) -> count already said
+        self.last_keys = []  # (v7.5) fact keys of the last line picked (written to the timeline)
 
     @classmethod
     def action_of(cls, text):
@@ -759,11 +796,11 @@ class Filler:
                 if i >= len(starters[side]):
                     continue
                 r = starters[side][i]
-                name, n, pos = r["name"], r.get("shirt_number", ""), POSITION_WORDS.get(r.get("position", ""), "")
+                name, n = r["name"], r.get("shirt_number", "")
+                # (v7.5) the position is said by the unit lines only (when they agree with the formation)
                 add(f"player:{name}", "player",
                     f"{name} wears number {n} for {team}." if n else None,
-                    f"Number {n} for {team} is {name}." if n else None,
-                    f"{name} plays {pos} for {team}." if pos else None)
+                    f"Number {n} for {team} is {name}." if n else None)
         for side, team in sides:
             cap, coach = ctx.captain(side), ctx.coach(side)
             tactics = ctx.info.get(f"{side}_tactics", "")
@@ -779,7 +816,7 @@ class Filler:
                 add(f"table:{side}", "team", f"{team} started the day {pos} on {pts} points.")
             for code, texts in UNIT_TEXT.items():
                 names = [r["name"] for r in starters[side] if r.get("position") == code]
-                if len(names) >= 2:
+                if len(names) >= 2 and ctx.unit_ok(side, code):
                     add(f"unit:{side}:{code}", "unit", *[t.format(team=team, names=name_list(names)) for t in texts])
             subs = [r["name"] for r in ctx.players(side, "substitute")]
             for j in range(0, len(subs) - 1, 3):
@@ -789,7 +826,7 @@ class Filler:
             form, wins, n = ctx.form_of(team)
             if n == 5:
                 add(f"form:{side}", "form", f"{team} have won {num_word(wins)} of their last five games.",
-                    f"{team}'s last five results read {form}.")
+                    f"{team}'s last five results: {form_words(form)}.")
             rows = sorted((r for r in ctx.form if r.get("team") == team), key=lambda r: r.get("date", ""))[-5:]
             for k, r in enumerate(reversed(rows)):
                 text, my = result_text(team, r), month_year(r.get("date"))
@@ -820,6 +857,15 @@ class Filler:
         add("competition", "venue", f"This is {v['competition']}, {v['round_phrase']}."
             if v["competition"] and v["round_phrase"] else None)
         return items
+
+    def mark(self, keys, now):
+        """(v7.5) the script says these facts at `now` (half * 10000 + second): the filler leaves them until
+        `reuse_after` seconds later. 'bench:home:*' = every item whose key starts with 'bench:home:'."""
+        for key in keys:
+            for it in self.items:
+                if it.key == key or (key.endswith("*") and it.key.startswith(key[:-1])):
+                    it.uses += 1
+                    it.last = max(it.last, now)
 
     # ---------------- dynamic items
     def _score(self, half, second):
@@ -888,6 +934,7 @@ class Filler:
         """A line of at most `budget` words for this time, or (None, None).
         after_yes: text of the yes event just said; its count (third corner...) is said first when it changed."""
         now = half * 10000 + second
+        self.last_keys = []
         prefer = self.action_of(after_yes)
         order = sorted(self.ORDER, key=lambda c: self.last_cat[c])  # the topic said longest ago first
         if prefer:
@@ -904,11 +951,11 @@ class Filler:
             if text:
                 self.last_cat[cat] = now
                 return cat, text
-        # every topic said recently: the static item said longest ago (at least MIN_REUSE seconds ago)
+        # every topic said recently: the static item said longest ago (at least reuse_after seconds ago)
         # (a topic other than the one just said first, so that two bench lines do not follow each other)
         last = max(self.last_cat, key=self.last_cat.get)
         off = self.gone_off(half, second)
-        old = sorted((it for it in self.items if it.uses and now - it.last >= self.MIN_REUSE and not (
+        old = sorted((it for it in self.items if it.uses and now - it.last >= self.reuse_after and not (
                       it.category in ("player", "unit") and any(name in it.variants[0] for name in off))),
                      key=lambda it: (it.category == last, now - self.last_cat[it.category] < self.COOLDOWN[it.category],
                                      it.last))
@@ -918,6 +965,7 @@ class Filler:
             if fit:
                 it.uses, it.last = it.uses + 1, now
                 self.last_cat[it.category] = now
+                self.last_keys = [it.key]
                 return it.category, fit[0]
         return None, None
 
@@ -927,13 +975,13 @@ class Filler:
                 texts = self._fits(texts, budget)
                 if texts:
                     self.stats_said[key] = n
+                    self.last_keys = [f"stats:{key[1]}:{n}"]
                     return self.rng.choice(texts)
             return None
-        if cat == "score":
-            texts = self._fits(self._score(half, second), budget)
-            return self.rng.choice(texts) if texts else None
-        if cat == "clock":
-            texts = self._fits(self._clock(half, second, half_len), budget)
+        if cat in ("score", "clock"):
+            texts = self._score(half, second) if cat == "score" else self._clock(half, second, half_len)
+            texts = self._fits(texts, budget)
+            self.last_keys = [cat] if texts else []
             return self.rng.choice(texts) if texts else None
         if cat == "recap":
             for key, texts in self._recap(half, second):
@@ -941,6 +989,7 @@ class Filler:
                     texts = self._fits(texts, budget)
                     if texts:
                         self.recap_last[key] = now
+                        self.last_keys = [key]
                         return texts[0]
             return None
         pool = [it for it in self.items if it.category == cat]
@@ -958,6 +1007,7 @@ class Filler:
             if not fit:
                 continue
             parts.append(fit[0])
+            self.last_keys.append(it.key)
             it.uses, it.last = it.uses + 1, now
             budget_left -= word_count(fit[0])
             if len(parts) == 2 or budget_left < 6:
@@ -968,7 +1018,7 @@ class Filler:
 
 
 def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=1.0, min_fill=3.0,
-                    max_line_words=30, seed=0):
+                    max_line_words=30, seed=0, reuse_after=1500, retry_step=10.0):
     """Fill every silence of the timeline with no-flow lines, so that the commentary never stops.
 
     yes_events: [(half, second, text)] (muted ones are not spoken); lines: the no-flow lines of build_schedule.
@@ -976,7 +1026,10 @@ def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=
     the next line. Silences shorter than `min_fill` seconds are left. No filling after the half-time invitation (C2),
     the goodbye (G4) or the extra-time line (H1). Returns the new lines (code FILL, topic = what they talk about)."""
     said = [(h, s, t) for h, s, t in yes_events if (h, s) not in muted]
-    filler = Filler(ctx, said, seed=seed)
+    filler = Filler(ctx, said, seed=seed, reuse_after=reuse_after)
+    for l in lines:  # (v7.5) facts the script says itself are not said again by the filler
+        if l.facts:
+            filler.mark(l.facts, l.half * 10000 + l.second)
     added = []
     for half in (1, 2):
         if half - 1 >= len(half_lens):
@@ -998,10 +1051,11 @@ def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=
                     break
                 cat, text_fill = filler.pick(half, int(t), budget, half_len,
                                              after_yes=prev_text if prev_code == "YES" else "")
-                if not text_fill:
-                    break
+                if not text_fill:  # (v7.5) every topic is cooling down: try again a little later (was: give up the
+                    t += retry_step  # whole silence, which left gaps of 2-3 minutes)
+                    continue
                 line = Line(half, round(t, 1), "FILL", text_fill, False, phase="background", topic=cat,
-                            vars=ctx.vars_at(half, int(t)))
+                            vars=ctx.vars_at(half, int(t)), facts=list(filler.last_keys))
                 line.after = "" if prev_code == "YES" else prev_code
                 line.vars["kind"] = ctx.kind
                 added.append(line)

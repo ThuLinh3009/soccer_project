@@ -22,6 +22,9 @@ New version next to commentary/no_flow_llm.py (v1, ElevenLabs, kept unchanged). 
 - (v5.9) --llm openai: an OpenAI chat model (--openai_model gpt-4o-mini, key in OPENAI_API_KEY) writes the lines,
   then voice/tts_v2.py --engine openai (gpt-4o-mini-tts) reads them. --llm_half / --llm_start / --llm_end: the LLM only for
   the demo part (the other lines stay templates): a continuous match has 1000+ lines.
+- (v7.5) pace and repeats: --fill_pause / --fill_min leave room between the lines (e.g. 3.5 s, only silences over
+  8 s are filled); a fact is said again only after --fill_reuse seconds (25 min), and facts the script already said
+  are not said again by the filler; --min_llm_share stops with an error instead of silently using the templates.
 
 Output (<out_dir>/<game>/): commentary_timeline.json / .txt (yes + no lines), input of voice/tts_v2.py.
 
@@ -32,6 +35,7 @@ usage:
 import json
 import os
 import re
+import unicodedata
 from argparse import ArgumentParser
 
 from commentary.commentary_timeline import format_game_time
@@ -132,8 +136,21 @@ def clean_answer(text):
     return re.sub(r"\s+", " ", text)
 
 
-def check(answer, message, fact, phase, budget=None):
-    """Reason the answer is rejected, or None if it can be used."""
+def plain(s):
+    """(v7.5) lower case without accents: 'Ståle' and 'Stale', 'Ødegaard' and 'Odegaard' are the same name."""
+    s = unicodedata.normalize("NFKD", (s or "").replace("ø", "o").replace("Ø", "O").replace("æ", "ae"))
+    return "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
+
+
+def name_tokens(ctx):
+    """(v7.5) every word of the names of the match (players, coaches): a sentence may start with one of them."""
+    names = [r.get("name", "") for r in ctx.lineups] + [r.get("name", "") for r in ctx.staff]
+    return {plain(w) for n in names for w in re.findall(r"[\w'’-]{3,}", n)}
+
+
+def check(answer, message, fact, phase, budget=None, names=None):
+    """Reason the answer is rejected, or None if it can be used. names: name_tokens(ctx), to catch a player of the
+    match who is not in the message even at the start of a sentence."""
     if not answer:
         return "empty"
     words = len(answer.split())
@@ -148,11 +165,17 @@ def check(answer, message, fact, phase, budget=None):
         return f"banned word '{BANNED.search(answer).group(0)}'"
     if LAST_MEETING.search(answer) and not LAST_MEETING.search(fact) and "last met" not in fact.lower():
         return f"banned word '{LAST_MEETING.search(answer).group(0)}'"
-    known = message.lower()
+    known = plain(message)
     for sentence in re.split(r"(?<=[.!?])\s+", answer):
-        for w in re.findall(r"[A-ZÀ-Ý][\w'’-]+", sentence)[1:]:  # capitalised words after the first one
-            if w not in CAPITAL_OK and w.lower().strip("'’s") not in known and w.lower() not in known:
+        for w in re.findall(r"[A-ZÀ-ÝØÆÅ][\w'’-]+", sentence)[1:]:  # capitalised words after the first one
+            p = plain(w)
+            if w not in CAPITAL_OK and p not in known and p.strip("'’s") not in known \
+                    and re.sub(r"['’]s$", "", p) not in known:
                 return f"unknown name '{w}'"
+    for w in re.findall(r"[A-ZÀ-ÝØÆÅ][\w'’-]+", answer) if names else []:  # (v7.5) also the first word of a sentence
+        p = re.sub(r"['’]s$", "", plain(w))
+        if p in names and p not in known:
+            return f"unknown name '{w}'"
     if any(ch in answer for ch in "*#“”"):
         return "markdown or quotes"
     return None
@@ -172,7 +195,8 @@ def main(args):
     lines, muted = build_schedule(ctx, yes, half_lens, seed=args.seed)
     n_fill = 0
     if args.continuous:
-        fills = fill_continuous(ctx, lines, yes, muted, half_lens, pause=args.fill_pause, seed=args.seed)
+        fills = fill_continuous(ctx, lines, yes, muted, half_lens, pause=args.fill_pause, min_fill=args.fill_min,
+                                seed=args.seed, reuse_after=args.fill_reuse)
         n_fill = len(fills)
         lines = sorted(lines + fills, key=lambda l: (l.half, l.second))
     slots = time_slots([(h, s) for h, s, _ in yes if (h, s) not in muted] + [(l.half, l.second) for l in lines],
@@ -219,12 +243,15 @@ def main(args):
                  "phase": "event", "code": "", "text": text, "text_raw": raw, "muted": (h, s) in muted,
                  **timing(text, slots.get((h, s), 0.0))}
                 for (h, s, text), ((_, _), raw, _, _) in zip(yes, events)]
-    said, n_llm, rejected, n_retry = [], 0, {}, 0
+    said, n_llm, rejected, n_retry, n_asked = [], 0, {}, 0, 0
+    names = name_tokens(ctx)
     for i, line in enumerate(lines):
         before = [t for h, s, t in yes if h == line.half and s <= line.second and (h, s) not in muted]
         budget = budget_of(line.slot, line.phase)
         message = build_message(ctx, line, before[-1] if before else None, said[-args.history:], ctx.gender, budget)
         text, used = line.text, "template"
+        if llm and (line.code != "FILL" or args.fill_llm) and llm_here(line):
+            n_asked += 1
         if llm and pool.current and (line.code != "FILL" or args.fill_llm) and llm_here(line):
             ask = message
             for attempt in range(1 + args.retries):
@@ -235,7 +262,7 @@ def main(args):
                 except Exception as e:  # network / no quota left: keep the template line
                     answer = ""
                     print(f"  LLM error: {str(e)[:160]}")
-                reason = check(answer, message, line.text, line.phase, budget) if model else "no answer"
+                reason = check(answer, message, line.text, line.phase, budget, names) if model else "no answer"
                 if not reason or not reason.startswith("too long") or attempt == args.retries:
                     break
                 n_retry += 1  # too long for the slot: ask again, shorter
@@ -255,7 +282,7 @@ def main(args):
         timeline.append({"half": line.half, "second": line.second, "gameTime": format_game_time(line.half,
                          int(line.second)), "flow": "no", "source": used, "phase": line.phase, "code": line.code,
                          "topic": line.topic, "mandatory": line.mandatory, "after": line.after, "fact": line.text,
-                         "text": text, **t})
+                         "facts": line.facts, "text": text, **t})
         print(f"[{i + 1}/{len(lines)}] {format_game_time(line.half, int(line.second))} {line.code:<12} "
               f"{t['words']:>2}/{t['max_words']:<2} words {t['est_seconds']:>4.1f}/{t['slot']:<5.1f}s "
               f"{'OVER ' if t['over'] else ''}{text}")
@@ -290,6 +317,13 @@ def main(args):
           f", {n_retry} asked again shorter | speech {args.wps} words/s: {len(over)} lines (yes "
           f"{sum(c['flow'] == 'yes' for c in over)}, no {sum(c['flow'] == 'no' for c in over)}) longer than their "
           f"slot (voice/tts_v2.py speeds them up) -> {os.path.join(out_dir, 'commentary_timeline.txt')}")
+    if llm and n_asked:  # (v7.5) never fall back to templates without saying so
+        share = n_llm / n_asked
+        print(f"LLM wrote {n_llm} of the {n_asked} lines it was asked for ({100 * share:.0f}%)")
+        if share < args.min_llm_share:
+            raise SystemExit(f"ERROR: the LLM wrote only {100 * share:.0f}% of its lines (< {100 * args.min_llm_share:.0f}%, "
+                             f"--min_llm_share): the others are templates. Check the key / quota and the 'rejected' "
+                             f"reasons above. The timeline was written anyway.")
 
 
 if __name__ == "__main__":
@@ -326,5 +360,12 @@ if __name__ == "__main__":
     p.add_argument("--fill_llm", action="store_true",
                    help="--continuous: the FILL lines also go through the LLM (many requests: needs a paid quota)")
     p.add_argument("--fill_pause", type=float, default=0.7, help="--continuous: seconds between two lines")
+    p.add_argument("--fill_min", type=float, default=3.0,
+                   help="(v7.5) --continuous: only silences longer than this many seconds are filled")
+    p.add_argument("--fill_reuse", type=float, default=1500,
+                   help="(v7.5) --continuous: a fact is said again only this many seconds later (25 min)")
+    p.add_argument("--min_llm_share", type=float, default=0.0,
+                   help="(v7.5) stop with an error when the LLM wrote less than this share of the lines it was asked "
+                        "for (e.g. 0.6): no silent fall-back to the templates")
     p.add_argument("--out_dir", default=os.path.join("outputs", "no_flow_v2"))
     main(p.parse_args())

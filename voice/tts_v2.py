@@ -52,7 +52,7 @@ from argparse import ArgumentParser
 import numpy as np
 
 from api.gemini_client import Gemini, GeminiError, ModelPool, read_key, save_wav, wav_to_pcm
-from commentary.script_v2 import neutral_caption, time_slots
+from commentary.script_v2 import neutral_caption, num_word, time_slots
 
 RATE = 24000
 
@@ -69,14 +69,19 @@ def _ordinal(n):
     return f"{n}{'th' if 10 <= n % 100 <= 20 else ORDINAL.get(n % 10, 'th')}"
 
 
+def _score_word(n):
+    return "nil" if int(n) == 0 else num_word(n)
+
+
 def spoken_text(text):
     """Text a TTS model reads well: 85' -> 85th minute, 90'+4' -> 90th minute plus 4, 2-1 -> 2 1, 1-0 -> 1 nil,
     3-4-2-1 -> 3 4 2 1, BRIGHT -> Bright, no brackets."""
     t = re.sub(r"(\d+)['’]\s*\+\s*(\d+)['’]?", lambda m: f"{_ordinal(m.group(1))} minute plus {m.group(2)}", text)
     t = re.sub(r"(\d+)['’](?!\w)", lambda m: f"{_ordinal(m.group(1))} minute", t)
     t = re.sub(r"\b\d(?:-\d){2,}\b", lambda m: m.group(0).replace("-", " "), t)  # formation
-    t = re.sub(r"\b(\d+)-(\d+)\b", lambda m: f"{m.group(1)} {'nil' if m.group(2) == '0' else m.group(2)}"
-               if m.group(1) != "0" else f"nil {'nil' if m.group(2) == '0' else m.group(2)}", t)  # score
+    # (v7.5) score in words: '4-1 away' was read as 'four one zero A'; 1-0 -> 'one nil'
+    t = re.sub(r"\b(\d{1,2})-(\d{1,2})\b", lambda m: f"{_score_word(m.group(1))} {_score_word(m.group(2))}", t)
+    t = re.sub(r"(?<=[A-Za-z]) 0(?=[,.!?]|$)", " nil", t)  # 'Brazil 0, Norway 0.' -> 'Brazil nil, Norway nil.'
     t = re.sub(r"\b[A-ZÀ-Ý]{3,}\b", lambda m: m.group(0) if m.group(0) in ("VAR", "FIFA", "UEFA", "WSL")
                else m.group(0).capitalize(), t)
     t = re.sub(r"\s*\(([^)]*)\)", r", \1,", t)

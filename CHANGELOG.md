@@ -3,6 +3,34 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.5 (2026-11-20)
+Sửa các lỗi nghe thấy trong video demo Brazil – Norway của v7.4: đọc quá nhanh, chỉ có câu template, lặp thông tin, đội hình sai, đọc ký hiệu lỗi.
+
+- **LLM phải chạy thật.** Bản v7.4 âm thầm dùng 100% câu template.
+  - Notebook: `REQUIRE_LLM = True` (mặc định). Key OpenAI lỗi thì cell 10 dừng và báo đỏ, không tự chuyển sang template.
+  - `commentary/no_flow_v2.py --min_llm_share 0.6`: in ra tỉ lệ câu do LLM viết, dừng báo lỗi nếu dưới 60%.
+  - Kiểm tra tên riêng không phân biệt dấu: "Ståle" và "Stale", "Ødegaard" và "Odegaard" là một tên.
+  - Câu bắt đầu bằng tên một cầu thủ không có trong thông tin của câu đó bị loại. Bản cũ bỏ qua chữ đầu câu, nên "Haaland leads Norway." vẫn lọt.
+- **Nhịp nói.**
+  - `OPENAI_SPEED` từ 1.5 giảm về 1.1.
+  - `--fill_pause 2.5`: nghỉ 2,5 giây giữa các câu lấp khoảng lặng (bản cũ 0,7 giây).
+  - `--fill_min 6`: chỉ lấp khoảng lặng dài hơn 6 giây (bản cũ 3 giây).
+  - Tỉ số nhắc cách nhau ít nhất 4 phút (bản cũ 100 giây); câu về số áo cách nhau ít nhất 30 giây.
+  - Sửa lỗi: khi mọi chủ đề đang chờ, bộ lấp bỏ luôn cả khoảng lặng còn lại, để lại khoảng im 2–3 phút. Giờ đợi 10 giây rồi thử lại.
+- **Chống lặp theo thông tin.**
+  - Mỗi thông tin có một mã (`player:Alisson`, `bench:home:*`, `form:away`...), ghi vào timeline ở trường `facts`.
+  - Thông tin kịch bản chính đã nói (HLV, đội trưởng, sơ đồ, dự bị, phong độ...) không bị bộ lấp nói lại.
+  - Một thông tin chỉ nhắc lại sau `--fill_reuse 1500` giây (25 phút); bản cũ chỉ sau 3 phút. Hết thông tin thì im lặng, không lặp.
+- **Đội hình khớp sơ đồ.**
+  - Không kể theo hàng (hậu vệ / tiền vệ / tiền đạo) nếu số người trong hàng lệch với sơ đồ. Ví dụ Norway 4-1-2-3 nhưng FIFA chỉ ghi 3 hậu vệ, còn Ryerson bị ghi là FW.
+  - Bỏ câu "X plays up front for ..." lấy từ mã vị trí thô của FIFA.
+- **Đọc ký hiệu.**
+  - Phong độ đọc thành chữ: "draw, win, win, loss and win".
+  - Tỉ số đọc thành chữ: "four one away", "one nil"; "Brazil 0, Norway 0" đọc "Brazil nil, Norway nil" (`voice/tts_v2.py`).
+- Đã chạy thử local trên Brazil – Norway (template):
+  - 10 phút đầu không còn thông tin nào lặp (bản v7.4: số áo kể 2 lần, dự bị 3 lần).
+  - Tỉ lệ thời gian có tiếng nói 23% (bản v7.4: 88%, chủ yếu do lặp). Lời bình còn thưa vì kho thông tin của trận chỉ có khoảng 60 mục; v7.6 bổ sung thêm.
+
 ## v7.4 (2026-11-20)
 - Notebook test (`notebooks/colab_test_pipeline_v7.4.ipynb`): cell 2 mặc định là **test luồng NO trên Brazil – Norway**, mở ra chạy ngay cell 2, 3, 4, 10, 12 mà không phải sửa gì. Trước đây mặc định là Chelsea – Man City nên dễ chạy nhầm trận.
   - Trận: `TEST_GAMES = ["2026-07-05 - Brazil 1 - 2 Norway"]`.
