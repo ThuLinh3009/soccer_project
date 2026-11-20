@@ -3,6 +3,30 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.6 (2026-11-20)
+Luồng NO có thêm thông tin, nói đều cả hiệp, câu tự nhiên hơn.
+
+- **Metadata đa nguồn** (`crawler/prepare_metadata.py`, mới):
+  - Chép bản crawl FIFA mới, thêm `wikipedia/lineups.csv`, `wikipedia/squads.csv`, `tournament_path.csv` vào `video_test/metadata/<trận>/`. Bản cũ được giữ lại thành `<trận>_backup_<ngày>`.
+  - **Chỉ giữ thông tin biết trước trận.** Bỏ phút thay người, thẻ phạt, tóm tắt trận của Wikipedia và PDF thống kê sau trận của FIFA.
+- **`commentary/script_v2.py` đọc thêm dữ liệu** (nếu có các file trên):
+  - **Vị trí chi tiết** theo Wikipedia (hậu vệ phải, tiền vệ trụ, cánh trái...). Chỉ dùng khi đủ 11 người và khớp sơ đồ. Ví dụ Ryerson thành hậu vệ phải, Martinelli thành tiền vệ trung tâm; các hàng của cả hai đội khớp 4-1-2-3.
+  - **Hồ sơ cầu thủ:** CLB, số trận và số bàn cho đội tuyển *trước giải* (không dùng số của FIFA vì đã tính cả trận này), tuổi lúc bóng lăn.
+  - **Thông tin cả đội:** cầu thủ trẻ nhất / lớn tuổi nhất, tuổi trung bình, người nhiều trận nhất, số cầu thủ chơi ở cùng một giải quốc gia.
+  - **Hành trình ở giải:** kết quả vòng bảng, trận knock-out trước trận này. Trùng với kết quả trong `form.csv` thì tính là cùng một thông tin, không nói hai lần.
+  - Kho thông tin của Brazil – Norway tăng từ khoảng 60 lên 118 mục.
+- **Nói đều cả hiệp:** `--fill_target 0.4`.
+  - Bộ lấp dừng khi 5 phút gần nhất đã có tiếng nói hơn 40% thời gian.
+  - Mức này tự giảm khi trận ít thông tin, nên không còn kiểu nói dồn rồi im vài phút.
+  - Thông tin nhắc lại sau 20 phút (`FILL_REUSE = 1200`).
+- **Câu tự nhiên hơn:**
+  - Prompt LLM thêm 2 quy tắc: nối hai ý thành một câu liền mạch; không mở đầu giống các câu vừa nói; không lặp kiểu "X wears number N".
+  - LLM xem 6 câu gần nhất (bản cũ 3).
+- Notebook: cell 3 báo trận có metadata Wikipedia hay chỉ có FIFA; thêm `FILL_TARGET` ở cell 2.
+- Đã chạy thử local (template), tỉ lệ thời gian có tiếng nói theo từng đoạn 5 phút:
+  - Brazil – Norway (metadata mới): khoảng 40–46%, cả hiệp 40%; 10 phút đầu không lặp thông tin. Bản v7.5: 23%, có khoảng im 2–3 phút.
+  - Chelsea và Brazil bản cũ (chỉ FIFA): đều khoảng 20–25%, không còn bị dồn.
+
 ## v7.5 (2026-11-20)
 Sửa các lỗi nghe thấy trong video demo Brazil – Norway của v7.4: đọc quá nhanh, chỉ có câu template, lặp thông tin, đội hình sai, đọc ký hiệu lỗi.
 

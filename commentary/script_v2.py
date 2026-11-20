@@ -60,6 +60,13 @@ def name_list(names):
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1] if names else ""
 
 
+def plain_name(s):
+    """(v7.6) 'Vinícius Júnior' -> 'vinicius junior', 'Ørjan' -> 'orjan' (to match names across sources)."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", (s or "").replace("ø", "o").replace("Ø", "O").replace("æ", "ae"))
+    return "".join(ch for ch in s if not unicodedata.combining(ch)).lower().strip()
+
+
 def read_csv(path):
     if not os.path.exists(path):
         return []
@@ -103,6 +110,26 @@ def formation_counts(tactics):
     if len(parts) < 3 or sum(parts) != 10:
         return {}
     return {"DF": parts[0], "MF": sum(parts[1:-1]), "FW": parts[-1]}
+
+
+# (v7.6) detailed positions (Wikipedia line-ups) -> unit, and how a commentator says them
+POS_GROUP = {"GK": "GK", "RB": "DF", "LB": "DF", "CB": "DF", "RCB": "DF", "LCB": "DF", "SW": "DF", "RWB": "DF",
+             "LWB": "DF", "WB": "DF", "DF": "DF", "DM": "MF", "CDM": "MF", "CM": "MF", "RCM": "MF", "LCM": "MF",
+             "AM": "MF", "CAM": "MF", "LM": "MF", "RM": "MF", "MF": "MF", "RW": "FW", "LW": "FW", "RF": "FW",
+             "LF": "FW", "CF": "FW", "ST": "FW", "SS": "FW", "FW": "FW"}
+POS_PHRASE = {"GK": "in goal", "RB": "at right-back", "LB": "at left-back", "CB": "at centre-back",
+              "RCB": "at centre-back", "LCB": "at centre-back", "SW": "as the sweeper", "RWB": "at right wing-back",
+              "LWB": "at left wing-back", "DM": "as the holding midfielder", "CDM": "as the holding midfielder",
+              "CM": "in central midfield", "RCM": "in central midfield", "LCM": "in central midfield",
+              "AM": "behind the strikers", "CAM": "behind the strikers", "LM": "on the left of midfield",
+              "RM": "on the right of midfield", "RW": "on the right wing", "LW": "on the left wing",
+              "RF": "on the right of the attack", "LF": "on the left of the attack", "CF": "at centre-forward",
+              "ST": "up front", "SS": "as a second striker"}
+COUNTRY = {"ENG": "England", "ESP": "Spain", "ITA": "Italy", "GER": "Germany", "FRA": "France", "POR": "Portugal",
+           "NED": "the Netherlands", "BEL": "Belgium", "SCO": "Scotland", "TUR": "Turkey", "KSA": "Saudi Arabia",
+           "USA": "the United States", "BRA": "Brazil", "NOR": "Norway", "DEN": "Denmark", "SWE": "Sweden",
+           "ARG": "Argentina", "MEX": "Mexico", "GRE": "Greece", "AUT": "Austria", "SUI": "Switzerland",
+           "QAT": "Qatar", "JPN": "Japan", "KOR": "South Korea"}
 
 
 def next_stage(stage):
@@ -152,6 +179,13 @@ class MatchContext:
             self.events.append(r)
         self.events.sort(key=lambda r: (r["half"], r["second"]))
         self.home, self.away = self.info.get("home_team", ""), self.info.get("away_team", "")
+        # (v7.6) optional files of the multi-source crawl: only facts known before kick-off are read from them
+        self.wiki_lineups = read_csv(os.path.join(d, "wikipedia", "lineups.csv"))  # position only
+        self.squads = read_csv(os.path.join(d, "wikipedia", "squads.csv"))  # club, caps before the tournament
+        date = (self.info.get("date_utc") or self.info.get("date_local") or "")[:10]
+        self.path = [r for r in read_csv(os.path.join(d, "tournament_path.csv"))
+                     if r.get("finished", "True") == "True" and (not date or r.get("date", "") < date)]
+        self.enriched = self._enrich_players()
         comp = self.info.get("competition", "")
         self.gender = "women" if re.search(r"women|wsl|féminine|frauen", comp, re.I) else "men"
         self.kind = self._kind()
@@ -183,6 +217,33 @@ class MatchContext:
 
     def players(self, side, role="starter"):
         return [r for r in self.lineups if r.get("side") == side and r.get("role") == role]
+
+    def _enrich_players(self):
+        """(v7.6) Wikipedia positions and squad facts on the FIFA line-up rows (matched by team + shirt number).
+        A side's positions are replaced only when every starter is found and the units then agree with the
+        formation (FIFA's rough codes may not: Norway's right-back Ryerson is FW there). -> sides changed."""
+        changed = []
+        for side, team in (("home", self.home), ("away", self.away)):
+            squad = {r.get("shirt_number"): r for r in self.squads if r.get("team") == team}
+            for r in (x for x in self.lineups if x.get("side") == side):
+                s = squad.get(r.get("shirt_number"))  # the shirt number is unique in a tournament squad
+                if s:
+                    for key, src in (("club", "club"), ("club_country", "club_country"),
+                                     ("caps_before", "caps_before_tournament"),
+                                     ("goals_before", "goals_before_tournament")):
+                        if not r.get(key):
+                            r[key] = s.get(src, "")
+            wiki = {r.get("shirt_number"): r.get("position", "") for r in self.wiki_lineups
+                    if r.get("team") == team and r.get("role") == "starter"}
+            starters = self.players(side)
+            detail = [wiki.get(r.get("shirt_number"), "") for r in starters]
+            groups = [POS_GROUP.get(p) for p in detail]
+            need = formation_counts(self.info.get(f"{side}_tactics", ""))
+            if starters and all(groups) and (not need or all(groups.count(k) == n for k, n in need.items())):
+                for r, p, g in zip(starters, detail, groups):
+                    r["position_fifa"], r["position"], r["position_detail"] = r.get("position", ""), g, p
+                changed.append(side)
+        return changed
 
     def unit_ok(self, side, code):
         """(v7.5) True when the number of starters in this unit (DF / MF / FW) agrees with the formation, so that a
@@ -689,6 +750,7 @@ POSITION_WORDS = {"GK": "in goal", "DF": "in defence", "MF": "in midfield", "FW"
 UNIT_TEXT = {"DF": ["{team}'s back line: {names}.", "In defence for {team}: {names}."],
              "MF": ["In the {team} midfield: {names}.", "{team}'s midfield today: {names}."],
              "FW": ["Up front for {team}: {names}.", "Leading the line for {team}: {names}."]}
+PLAYER_CATS = ("player", "unit", "club", "caps")  # items about players who may have gone off
 MONTHS = "January February March April May June July August September October November December".split()
 
 
@@ -731,8 +793,9 @@ class Filler:
     Dynamic items (score, clock, recap) are made from the time of the line."""
 
     COOLDOWN = {"stats": 40, "score": 240, "clock": 300, "recap": 150, "player": 30, "unit": 45, "team": 45,
-                "form": 45, "h2h": 60, "venue": 90, "bench": 90}
-    ORDER = ["player", "team", "unit", "stats", "form", "venue", "h2h", "bench", "recap", "score", "clock"]
+                "form": 45, "h2h": 60, "venue": 90, "bench": 90, "club": 40, "caps": 40, "squad": 60, "path": 60}
+    ORDER = ["player", "team", "unit", "club", "stats", "path", "form", "caps", "venue", "squad", "h2h", "bench",
+             "recap", "score", "clock"]
     # what the yes flow (or the FIFA stand-in) saw, counted per half: kind -> (keywords, singular, plural)
     ACTIONS = {"corner": (r"corner", "corner", "corners"), "foul": (r"\bfoul", "foul", "fouls"),
                "shot": (r"\bshot|attempt|effort|strike|header", "attempt on goal", "attempts on goal"),
@@ -797,10 +860,12 @@ class Filler:
                     continue
                 r = starters[side][i]
                 name, n = r["name"], r.get("shirt_number", "")
-                # (v7.5) the position is said by the unit lines only (when they agree with the formation)
+                # (v7.5) no position from the rough FIFA code; (v7.6) the detailed one when Wikipedia gives it
+                pos = POS_PHRASE.get(r.get("position_detail", ""), "")
                 add(f"player:{name}", "player",
-                    f"{name} wears number {n} for {team}." if n else None,
-                    f"Number {n} for {team} is {name}." if n else None)
+                    (f"{name} wears number {n} for {team}" + (f" and plays {pos}" if pos else "") + ".") if n else None,
+                    (f"Number {n} for {team} is {name}" + (f", {pos}" if pos else "") + ".") if n else None)
+                self._profile_items(add, r, team)
         for side, team in sides:
             cap, coach = ctx.captain(side), ctx.coach(side)
             tactics = ctx.info.get(f"{side}_tactics", "")
@@ -830,9 +895,11 @@ class Filler:
             rows = sorted((r for r in ctx.form if r.get("team") == team), key=lambda r: r.get("date", ""))[-5:]
             for k, r in enumerate(reversed(rows)):
                 text, my = result_text(team, r), month_year(r.get("date"))
-                if text:
-                    add(f"form:{side}:{k}", "form", ("Last time out, " + text) if k == 0 else text,
+                if text:  # (v7.6) key by date: the same game in the tournament path is the same fact
+                    add(f"result:{team}:{r.get('date', k)}", "form", ("Last time out, " + text) if k == 0 else text,
                         f"In {my}, {result_text(team, r, when=False)}" if my else None)
+            self._squad_items(add, side, team, starters[side])
+            self._path_items(add, team)
         h2h = sorted((r for r in ctx.h2h if r.get("team") == ctx.home), key=lambda r: r.get("date", ""))
         v = ctx.base
         if h2h:
@@ -857,6 +924,81 @@ class Filler:
         add("competition", "venue", f"This is {v['competition']}, {v['round_phrase']}."
             if v["competition"] and v["round_phrase"] else None)
         return items
+
+    # ---------------- (v7.6) facts of the multi-source crawl (all known before kick-off)
+    def _profile_items(self, add, r, team):
+        name, his = r["name"], "her" if self.ctx.gender == "women" else "his"
+        club = r.get("club", "")
+        if club:
+            add(f"club:{name}", "club", f"{name} plays {his} club football for {club}.",
+                f"At club level, {name} is with {club}.")
+        caps, goals, age = r.get("caps_before", ""), r.get("goals_before", ""), str(r.get("age", "")).split(".")[0]
+        if caps.isdigit() and int(caps) > 0:
+            g = (f" and {goals} international goal{'' if goals == '1' else 's'}"
+                 if goals.isdigit() and int(goals) > 0 else "")
+            c = f"{caps} cap{'' if caps == '1' else 's'}"
+            add(f"caps:{name}", "caps", f"{name} came into the tournament with {c}{g}.",
+                f"{name}, {age}, had {c}{g} before this tournament." if age.isdigit() else None)
+
+    def _squad_items(self, add, side, team, starters):
+        def num(r, key):
+            try:
+                return int(float(r.get(key) or ""))
+            except ValueError:
+                return None
+        ages = [(num(r, "age"), r["name"]) for r in starters if num(r, "age")]
+        if len(ages) >= 8:
+            (young, yn), (old, on) = min(ages), max(ages)
+            add(f"youngest:{side}", "squad", f"At {young}, {yn} is the youngest player in the {team} starting line-up.")
+            add(f"oldest:{side}", "squad", f"{on}, at {old}, is the oldest player in the {team} starting line-up.")
+            add(f"avg_age:{side}", "squad",
+                f"The {team} starting eleven has an average age of {sum(a for a, _ in ages) / len(ages):.1f}.")
+        caps = [(num(r, "caps_before"), r["name"]) for r in starters if num(r, "caps_before")]
+        if len(caps) >= 8:
+            most, mn = max(caps)
+            add(f"most_caps:{side}", "squad", f"{mn} is the most experienced player in the {team} side, with {most} "
+                                              f"caps before the tournament.")
+        countries = [r.get("club_country") for r in starters if r.get("club_country")]
+        if countries:
+            top = max(set(countries), key=countries.count)
+            k = countries.count(top)
+            if k >= 3:
+                add(f"leagues:{side}", "squad", f"{num_word(k).capitalize()} of the {team} starters play their club "
+                                                f"football in {COUNTRY.get(top, top)}.")
+
+    def _path_items(self, add, team):
+        """How the team got to this match in the tournament (tournament_path.csv, games before this one)."""
+        rows = sorted((r for r in self.ctx.path if r.get("team") == team), key=lambda r: r.get("date", ""))
+        group, knockout = [], []
+        for r in rows:
+            m = re.match(r"(\d+)-(\d+)", r.get("score", ""))
+            if not m:
+                continue
+            home = r.get("home") == team
+            gf, ga = (int(m.group(1)), int(m.group(2))) if home else (int(m.group(2)), int(m.group(1)))
+            opp = r.get("away") if home else r.get("home")
+            stage = r.get("stage", "")
+            (group if re.search(r"group|first stage", stage, re.I) else knockout).append((r, opp, gf, ga, stage))
+        if group:
+            w = sum(gf > ga for _, _, gf, ga, _ in group)
+            d = sum(gf == ga for _, _, gf, ga, _ in group)
+            l = len(group) - w - d
+            parts = [f"{num_word(n)} {word}{'' if n == 1 else 's'}" for n, word in ((w, "win"), (d, "draw"),
+                                                                                     (l, "defeat")) if n]
+            add(f"path_group:{team}", "path", f"{team} came through the group stage{' unbeaten' if not l else ''}, "
+                                              f"with {name_list(parts)}.")
+        this = self.ctx.info.get("stage", "") or "this round"
+        for r, opp, gf, ga, stage in knockout:
+            if gf > ga:  # (a shoot-out win would need the penalties: not said)
+                add(f"result:{team}:{r.get('date')}", "path",
+                    f"{team} reached the {this} by beating {opp} {gf}-{ga} in the {stage}.")
+
+    def _use(self, it, now):
+        """(v7.6) an item is used: every item about the same fact (same key) counts as used too."""
+        for other in self.items:
+            if other.key == it.key:
+                other.uses, other.last = other.uses + (other is not it), now
+        it.uses += 1
 
     def mark(self, keys, now):
         """(v7.5) the script says these facts at `now` (half * 10000 + second): the filler leaves them until
@@ -956,14 +1098,14 @@ class Filler:
         last = max(self.last_cat, key=self.last_cat.get)
         off = self.gone_off(half, second)
         old = sorted((it for it in self.items if it.uses and now - it.last >= self.reuse_after and not (
-                      it.category in ("player", "unit") and any(name in it.variants[0] for name in off))),
+                      it.category in PLAYER_CATS and any(name in it.variants[0] for name in off))),
                      key=lambda it: (it.category == last, now - self.last_cat[it.category] < self.COOLDOWN[it.category],
                                      it.last))
         for it in old:
             fit = self._fits(it.variants[it.uses % len(it.variants):] + it.variants[:it.uses % len(it.variants)],
                              budget)
             if fit:
-                it.uses, it.last = it.uses + 1, now
+                self._use(it, now)
                 self.last_cat[it.category] = now
                 self.last_keys = [it.key]
                 return it.category, fit[0]
@@ -993,7 +1135,7 @@ class Filler:
                         return texts[0]
             return None
         pool = [it for it in self.items if it.category == cat]
-        if cat in ("player", "unit"):  # not a player who has already gone off (substitution, red card)
+        if cat in PLAYER_CATS:  # not a player who has already gone off (substitution, red card)
             off = self.gone_off(half, second)
             pool = [it for it in pool if not any(name in it.variants[0] for name in off)]
         fresh = [it for it in pool if it.uses == 0]
@@ -1008,7 +1150,7 @@ class Filler:
                 continue
             parts.append(fit[0])
             self.last_keys.append(it.key)
-            it.uses, it.last = it.uses + 1, now
+            self._use(it, now)
             budget_left -= word_count(fit[0])
             if len(parts) == 2 or budget_left < 6:
                 break
@@ -1018,7 +1160,7 @@ class Filler:
 
 
 def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=1.0, min_fill=3.0,
-                    max_line_words=30, seed=0, reuse_after=1500, retry_step=10.0):
+                    max_line_words=30, seed=0, reuse_after=1500, retry_step=10.0, target=1.0, window=300.0):
     """Fill every silence of the timeline with no-flow lines, so that the commentary never stops.
 
     yes_events: [(half, second, text)] (muted ones are not spoken); lines: the no-flow lines of build_schedule.
@@ -1041,11 +1183,25 @@ def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=
         if not spoken:
             continue
         stop = min([s for s, _, code, _ in spoken if code in ("C2", "G4", "H1")] + [half_len])
+        talk = [(s, d) for s, d, _, _ in spoken]  # (v7.6) every spoken line of the half, for the density limit
+        # (v7.6) the density the facts can keep up: all the static facts are said once per `reuse_after` seconds, so
+        # a small match file (FIFA only) talks less but evenly, instead of a burst followed by minutes of silence
+        stock = sum(word_count(it.variants[0]) / WORDS_PER_SECOND + 0.5 for it in filler.items)
+        script_share = sum(d for _, d in talk) / max(half_len, 1)
+        half_target = min(target, script_share + stock / max(reuse_after, 1)) if target < 1.0 else 1.0
+
+        def busy_share(t):  # share of the last `window` seconds with someone speaking
+            lo = t - window
+            return sum(max(0.0, min(s + d, t) - max(s, lo)) for s, d in talk) / window
+
         end, prev_code, prev_text = None, "", ""  # no filling before the first line of the half (welcome)
         for start, dur, code, text in spoken + [(half_len, 0.0, "END", "")]:
             t = None if end is None else end + pause
             limit = min(start, stop) - margin
             while t is not None and t < stop and limit - t >= min_fill:
+                if half_target < 1.0 and t > window / 2 and busy_share(t) >= half_target:
+                    t += retry_step  # (v7.6) enough talk lately: keep the facts for later in the half
+                    continue
                 budget = min(max_line_words, max_words(limit - t))
                 if budget < 3:
                     break
@@ -1059,6 +1215,7 @@ def fill_continuous(ctx, lines, yes_events, muted, half_lens, pause=0.7, margin=
                 line.after = "" if prev_code == "YES" else prev_code
                 line.vars["kind"] = ctx.kind
                 added.append(line)
+                talk.append((line.second, speech_len(text_fill)))
                 prev_code = "FILL"
                 t = line.second + speech_len(text_fill) + pause
             if start >= half_len:

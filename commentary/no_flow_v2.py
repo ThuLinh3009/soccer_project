@@ -25,6 +25,10 @@ New version next to commentary/no_flow_llm.py (v1, ElevenLabs, kept unchanged). 
 - (v7.5) pace and repeats: --fill_pause / --fill_min leave room between the lines (e.g. 3.5 s, only silences over
   8 s are filled); a fact is said again only after --fill_reuse seconds (25 min), and facts the script already said
   are not said again by the filler; --min_llm_share stops with an error instead of silently using the templates.
+- (v7.6) more facts when the metadata folder has wikipedia/ and tournament_path.csv (crawler/prepare_metadata.py):
+  detailed positions, clubs, caps before the tournament, ages, the way to this round; --fill_target spreads them over
+  the half (e.g. 0.4 = the filler waits while someone spoke more than 40% of the last 5 minutes); the LLM is asked
+  for flowing sentences (rules 11-12) and sees the last 6 lines (--history).
 
 Output (<out_dir>/<game>/): commentary_timeline.json / .txt (yes + no lines), input of voice/tts_v2.py.
 
@@ -74,6 +78,11 @@ players, tactics, the referee or who deserves to win.
 10. Say only what the FACT is about. Some moments are split into several lines said one after the other \
 (score, scorers, invitation, result, goodbye): never add the content of another line, e.g. no goodbye and no \
 invitation unless the FACT says it.
+11. Sound like a live commentator talking, not like a list being read. When the FACT has two pieces of \
+information, join them in one flowing sentence with a natural link (and, while, who, with). Never start your line \
+the way one of the ALREADY SAID lines starts, and never begin two lines in a row with a team name.
+12. Do not use the pattern "X wears number N" again and again: you can say "Brazil's number 4", "the number nine", \
+"wearing the 10"... A player's club, age or caps may be said only when they are in the FACT.
 
 Phase rules:
 - welcome: greet the viewers ("Hello and welcome"), name the stadium, the city, the competition, the round or \
@@ -196,7 +205,7 @@ def main(args):
     n_fill = 0
     if args.continuous:
         fills = fill_continuous(ctx, lines, yes, muted, half_lens, pause=args.fill_pause, min_fill=args.fill_min,
-                                seed=args.seed, reuse_after=args.fill_reuse)
+                                seed=args.seed, reuse_after=args.fill_reuse, target=args.fill_target)
         n_fill = len(fills)
         lines = sorted(lines + fills, key=lambda l: (l.half, l.second))
     slots = time_slots([(h, s) for h, s, _ in yes if (h, s) not in muted] + [(l.half, l.second) for l in lines],
@@ -347,7 +356,8 @@ if __name__ == "__main__":
                    help="max LLM requests per minute (default: gemini 12 for the free tier, openai 300)")
     p.add_argument("--temperature", type=float, default=0.7)
     p.add_argument("--language", default="English")
-    p.add_argument("--history", type=int, default=3, help="previous lines shown to the LLM to avoid repeats")
+    p.add_argument("--history", type=int, default=6,
+                   help="previous lines shown to the LLM to avoid repeats (v7.6: 6, was 3)")
     p.add_argument("--seed", type=int, default=0, help="choice between template variants")
     p.add_argument("--wps", type=float, default=2.6,
                    help="spoken words per second of the TTS voice (English 2.6; Vietnamese about 4.5 syllables). "
@@ -364,6 +374,9 @@ if __name__ == "__main__":
                    help="(v7.5) --continuous: only silences longer than this many seconds are filled")
     p.add_argument("--fill_reuse", type=float, default=1500,
                    help="(v7.5) --continuous: a fact is said again only this many seconds later (25 min)")
+    p.add_argument("--fill_target", type=float, default=1.0,
+                   help="(v7.6) --continuous: the filler stops while someone has been speaking more than this share of "
+                        "the last 5 minutes (e.g. 0.55), so that the facts last the whole half (1 = no limit)")
     p.add_argument("--min_llm_share", type=float, default=0.0,
                    help="(v7.5) stop with an error when the LLM wrote less than this share of the lines it was asked "
                         "for (e.g. 0.6): no silent fall-back to the templates")
