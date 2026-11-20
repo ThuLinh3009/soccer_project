@@ -9,12 +9,14 @@ soccer_project/
 │                  chạy trên một trận (infer_match.py); dataset, model, model_gpt, gpt, netvlad, loss, train, utils
 ├── features/      video → npy: cut_halves.py (cắt hiệp), timesformer_extract.py (768 chiều),
 │                  feature_mapper.py (768 → 8576 kiểu Baidu), download_subset.py (tải SoccerNet)
-├── crawler/       metadata trận đấu: fifa_crawl.py, crawl_web.py (website crawl), football_data.py, match_facts.py
+├── crawler/       metadata trận đấu: fifa_crawl.py, crawl_web.py (website crawl), football_data.py, match_facts.py,
+│                  prepare_metadata.py (FIFA + Wikipedia → video_test/metadata/<trận>, chỉ thông tin trước trận)
 ├── commentary/    luồng NO: script_v2.py (luật kịch bản), no_flow_v2.py (LLM viết câu), no_flow_llm.py (bản v1),
 │                  commentary_timeline.py (xếp câu lên timeline)
 ├── voice/         đọc thành tiếng: tts_v2.py (OpenAI / Gemini / Kokoro), voice_samples.py (nghe thử giọng)
 ├── api/           gọi API bên ngoài: openai_client.py, gemini_client.py (key chỉ lấy từ biến môi trường)
-├── evaluation/    eval_vs_fifa.py (so sự kiện luồng YES với FIFA)
+├── evaluation/    eval_vs_fifa.py (so sự kiện luồng YES với FIFA), check_commentary.py (bảng điểm đoạn demo:
+│                  nhịp nói, lặp, tỉ lệ câu LLM, số áo / tên đọc sai qua Whisper)
 ├── notebooks/     notebook Colab / Kaggle (colab_test_pipeline, colab_video2caption, colab_video2npy, colab_run, kaggle_run)
 ├── docs/          HUONG_DAN.md, NO_FLOW_SCRIPT.md, assets/
 ├── CHANGELOG.md
@@ -31,6 +33,7 @@ python -m crawler.fifa_crawl --season 2025 --team_a Chelsea --team_b "Manchester
 python -m deltalab.main --SoccerNet_path dataset/caption-2024 --model_name gpt2-video60-mlp ...
 python -m commentary.no_flow_v2 --metadata metadata/fifa/<trận> --events_from_fifa --llm openai ...
 python -m voice.tts_v2 --timeline <commentary_timeline.json> --engine openai ...
+python -m evaluation.check_commentary --timeline <commentary_timeline.json> --audio_timeline <audio_timeline.json> ...
 ```
 
 ## Introduction

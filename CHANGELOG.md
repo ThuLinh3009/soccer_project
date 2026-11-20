@@ -3,6 +3,28 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.7 (2026-11-20)
+Chấm điểm tự động đoạn demo, luồng NO tự dùng sự kiện của luồng YES khi có.
+
+- **`evaluation/check_commentary.py` (mới): bảng điểm của đoạn demo**, để so các phiên bản trên cùng một trận.
+  - Từ `commentary_timeline.json` và `audio_timeline.json`:
+    - % thời gian có tiếng nói;
+    - khoảng lặng dài nhất;
+    - số từ mỗi giây khi đang nói;
+    - tốc độ clip trung bình;
+    - số câu bị đọc trễ hơn 5 giây;
+    - tỉ lệ câu NO do LLM viết;
+    - số thông tin bị lặp (theo mã `facts` của v7.5).
+  - Tùy chọn `--video`: nghe lại video bằng Whisper (`faster-whisper`, chạy ngay trên máy, không gửi đi đâu).
+    - Kiểm tra số áo đọc cạnh tên cầu thủ có khớp metadata không.
+    - Liệt kê các từ viết hoa không giống tên nào trong trận, thường là tên bị giọng đọc phát âm sai.
+  - Notebook có **cell 13** chạy bảng điểm này, lưu vào `audio_openai/score_card.json`. Bật Whisper bằng `EVAL_WHISPER = True`.
+- **Kết hợp luồng YES:** `NO_EVENTS = "auto"` (mặc định mới). Cell 10 dùng sự kiện của luồng YES nếu Drive đã có `output/yes/<trận>/results_dense_captioning.json` (cell 5–7), nếu không thì dùng FIFA, và in ra nguồn đang dùng. `"yes"` báo lỗi khi chưa có kết quả luồng YES.
+- README: thêm `crawler/prepare_metadata.py` và `evaluation/check_commentary.py` vào sơ đồ thư mục.
+- Đã chạy thử local:
+  - Bảng điểm cho video demo v7.4 (Brazil – Norway) qua Whisper: 73% thời gian có tiếng nói (quá dày), 3,0 từ/giây khi đang nói, không sai số áo. Bắt được tên bị đọc sai: Ajer → "Iyer", Haaland → "Holland", Ørjan Nyland → "Orgion Niwand". Phép kiểm tra số áo bắt đúng một lỗi cài thử ("Marquinhos number 5").
+  - Luồng NO với 118 sự kiện YES giả lập: câu sự kiện xen với câu nền, bộ lấp phản ứng theo sự kiện ("Two corners so far in this half"), mật độ khoảng 40% đều cả hai hiệp, 10 phút đầu không lặp thông tin.
+
 ## v7.6 (2026-11-20)
 Luồng NO có thêm thông tin, nói đều cả hiệp, câu tự nhiên hơn.
 
