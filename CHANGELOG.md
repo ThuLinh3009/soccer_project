@@ -3,6 +3,19 @@
 Mỗi lần sửa code thì tăng phiên bản. Notebook Colab được đặt tên theo phiên bản: `colab_run_vX.Y.ipynb`.
 Code nằm trên GitHub: https://github.com/ThuLinh3009/soccer_project. Mỗi phiên bản là một commit.
 
+## v7.4 (2026-11-20)
+- Notebook test (`notebooks/colab_test_pipeline_v7.4.ipynb`): cell 2 mặc định là **test luồng NO trên Brazil – Norway**, mở ra chạy ngay cell 2, 3, 4, 10, 12 mà không phải sửa gì. Trước đây mặc định là Chelsea – Man City nên dễ chạy nhầm trận.
+  - Trận: `TEST_GAMES = ["2026-07-05 - Brazil 1 - 2 Norway"]`.
+  - Sự kiện: `NO_EVENTS = "fifa"`.
+  - Video: `VIDEO_NAME = "{half}_720p.mp4"`.
+  - Giọng và tốc độ: `OPENAI_SPEED = 1.5`, giọng `ash` cho cả hai luồng, `OPENAI_STYLE_NO` kiểu bình luận viên nam hào hứng.
+  - Đoạn demo: 10 phút đầu hiệp 1 (`DEMO_END = "10:00"`; `""` = cả hiệp).
+  - Cuối cell 2 in ra phiên bản notebook, trận, video, giọng và tốc độ đang dùng, để kiểm tra trước khi chạy tiếp.
+- `voice/tts_v2.py`: khi có đoạn demo (`--start` / `--end`), chỉ mã hóa video của đoạn demo (`<hiệp>_demo.mp4`).
+  - Không còn ghi video cả hiệp `<hiệp>_commentary.mp4`; với video 720p file này khoảng 1,2 GB.
+  - Thêm `--full_video` (notebook: `FULL_VIDEO = True`) nếu vẫn cần video cả hiệp.
+- Đã chạy thử local trên Brazil – Norway (clip giả trong cache, không gọi API): `1_demo.mp4` dài 64 giây, 1280×720, có tiếng bình luận, đọc x1.5; không tạo `1_commentary.mp4`.
+
 ## v7.3 (2026-11-19)
 - `voice/tts_v2.py`: thêm `--openai_speed` (mặc định 1.0). Ví dụ `--openai_speed 1.5` làm mọi câu đọc nhanh hơn 1,5 lần mà không đổi cao độ giọng (dùng lại WSOLA).
   - Phần tăng tốc cho vừa khoảng trống được cộng thêm, nhưng tổng tốc độ không quá `--max_total_speed` (mặc định 1,75).

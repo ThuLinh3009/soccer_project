@@ -282,6 +282,19 @@ def mux(video, wav, out, original_volume):
     subprocess.run(cmd, check=True)
 
 
+def mux_part(video, wav, out, start, end, original_volume):
+    """(v7.4) [start, end) of the video with the commentary `wav` (which already starts at `start`)."""
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-ss", str(start), "-to", str(end), "-i", video, "-i", wav]
+    if original_volume > 0 and has_audio(video):
+        cmd += ["-filter_complex",
+                f"[0:a]volume={original_volume}[a0];[a0][1:a]amix=inputs=2:duration=first:normalize=0[a]",
+                "-map", "0:v:0", "-map", "[a]"]
+    else:
+        cmd += ["-map", "0:v:0", "-map", "1:a:0", "-shortest"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "128k", out]
+    subprocess.run(cmd, check=True)
+
+
 def set_openai_style(args):
     """(v6.2) speaking style of the OpenAI voice: --openai_style epic | calm, each part replaceable."""
     OPENAI_STYLE.clear()
@@ -459,12 +472,13 @@ def main(args):
         if args.video_dir:
             video = os.path.join(args.video_dir, args.video_name.format(half=half))
             if os.path.exists(video):
-                out = os.path.join(out_dir, f"{half}_commentary.mp4")
-                mux(video, wav, out, args.original_volume)
-                print(f"half {half}: video with commentary -> {out}")
-                if demo:
+                if not demo or args.full_video:
+                    out = os.path.join(out_dir, f"{half}_commentary.mp4")
+                    mux(video, wav, out, args.original_volume)
+                    print(f"half {half}: video with commentary -> {out}")
+                if demo:  # (v7.4) only the demo part is encoded: no full-half video (1.2 GB at 720p) unless --full_video
                     demo_mp4 = os.path.join(out_dir, f"{half}_demo.mp4")
-                    cut_video(out, demo_mp4, t0, d1)
+                    mux_part(video, demo_wav, demo_mp4, t0, d1, args.original_volume)
                     print(f"half {half}: demo video -> {demo_mp4}")
             else:
                 print(f"half {half}: no video {video}")
@@ -510,6 +524,8 @@ if __name__ == "__main__":
     p.add_argument("--speed_goal", type=float, default=1.15, help="Kokoro speaking speed of a goal line")
     p.add_argument("--start", default=None, help="demo part: speak only from this time of the half (MM:SS)")
     p.add_argument("--end", default=None, help="demo part: ... to this time (MM:SS); also writes <half>_demo.*")
+    p.add_argument("--full_video", action="store_true",
+                   help="(v7.4) with --start/--end: also write the full-half <half>_commentary.mp4 (big at 720p)")
     p.add_argument("--tts_model", default="gemini-3.8-flash-lite-tts,gemini-2.5-flash-preview-tts,"
                                           "gemini-3.1-flash-tts-preview,gemini-3.8-flash-tts",
                    help="TTS models tried in order: the next one is used when a model has no quota left")
